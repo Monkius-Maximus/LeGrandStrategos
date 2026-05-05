@@ -4,11 +4,14 @@
 #include "GameFramework/GameStateBase.h"
 #include "StrategosGameState.generated.h"
 
+class UWorldState;
+
 /**
  * AStrategosGameState — container do estado replicável do jogo.
  *
- * Stage 0: stub. Será expandido na Etapa 1 do roadmap quando entrarem
- * UWorldState, UNation, UProvince e demais containers de simulação.
+ * Detém o UWorldState (Nations, Provinces, Armies) como dono canônico
+ * do estado da simulação. Subsistemas pegam o WorldState a partir daqui
+ * em vez de criarem o próprio.
  */
 UCLASS()
 class STRATEGOSCORE_API AStrategosGameState : public AGameStateBase
@@ -17,4 +20,16 @@ class STRATEGOSCORE_API AStrategosGameState : public AGameStateBase
 
 public:
 	AStrategosGameState();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos")
+	UWorldState* GetWorldState() const { return WorldState; }
+
+	UWorldState* GetOrCreateWorldState();
+
+protected:
+	virtual void BeginPlay() override;
+
+private:
+	UPROPERTY()
+	TObjectPtr<UWorldState> WorldState;
 };
