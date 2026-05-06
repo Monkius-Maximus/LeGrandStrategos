@@ -19,6 +19,29 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEconomyTickComplete, FName, Natio
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBuildingCompleted, FName, BuildingId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBankruptcyImminent, FName, NationId);
 
+UENUM(BlueprintType)
+enum class EBuildResult : uint8
+{
+	Issued					UMETA(DisplayName = "Issued"),
+	Rejected_NoNation		UMETA(DisplayName = "Rejected: nation not found"),
+	Rejected_NoProvince		UMETA(DisplayName = "Rejected: province not found"),
+	Rejected_WrongOwner		UMETA(DisplayName = "Rejected: province not owned by nation"),
+	Rejected_NoBuildingType	UMETA(DisplayName = "Rejected: building type not registered"),
+	Rejected_NoSlot			UMETA(DisplayName = "Rejected: no free building slot"),
+	Rejected_NoRawResource	UMETA(DisplayName = "Rejected: province lacks required raw resource"),
+	Rejected_InsufficientFunds UMETA(DisplayName = "Rejected: insufficient treasury funds"),
+	Rejected_InsufficientGoods UMETA(DisplayName = "Rejected: insufficient goods in stockpile")
+};
+
+UENUM(BlueprintType)
+enum class EEconomyActionResult : uint8
+{
+	Ok				UMETA(DisplayName = "Ok"),
+	NotFound		UMETA(DisplayName = "Not found"),
+	Invalid			UMETA(DisplayName = "Invalid"),
+	NotPermitted	UMETA(DisplayName = "Not permitted")
+};
+
 /**
  * UEconomySubsystem — Coração da simulação econômica.
  *
@@ -72,6 +95,35 @@ public:
 	/** Preço dinâmico = BasePrice × clamp(1 + (Demand-Supply)/Demand, 0.5, 2.0). */
 	UFUNCTION(BlueprintPure, Category = "Strategos|Economy")
 	float GetDynamicPrice(const UNation* Nation, FName GoodId) const;
+
+	// --- Player API: construção e gestão de prédios ----------------------------
+
+	/**
+	 * Tenta construir um prédio em ProvinceId. Custo (goods + cash) sai do
+	 * Treasury e do Stockpile da nação dona. ConstructionDays count down via
+	 * UTimeSubsystem.OnDayTick.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	EBuildResult BuildBuilding(FName NationId, FName ProvinceId, FName BuildingTypeId,
+		EBuildingOwnerKind OwnerKind = EBuildingOwnerKind::Government);
+
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	EEconomyActionResult DemolishBuilding(FName BuildingId);
+
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	EEconomyActionResult UpgradeBuildingLevel(FName BuildingId);
+
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	EEconomyActionResult ChangeProductionMethod(FName BuildingId, FName NewMethodId);
+
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	EEconomyActionResult ToggleProductionModifier(FName BuildingId, FName ModifierId, bool bActivate);
+
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Player")
+	void SetTaxLevel(FName NationId, EPopStratum Stratum, ETaxLevel NewLevel);
+
+	UFUNCTION(BlueprintPure, Category = "Strategos|Economy|Player")
+	UBuilding* FindBuildingById(FName BuildingId) const;
 
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Economy")
 	FOnEconomyTickComplete OnEconomyTickComplete;

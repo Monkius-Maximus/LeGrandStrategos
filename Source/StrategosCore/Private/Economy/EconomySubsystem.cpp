@@ -779,3 +779,259 @@ void UEconomySubsystem::Phase_ComputeStrategicIndices(UNation& Nation)
 	Nation.StrategicIndices.CivilianMoraleIndex      = FMath::Clamp((BreadSR + GarmentsSR) * 0.5f, 0.5f, 1.5f);
 	Nation.StrategicIndices.IndustrialCapacityIndex  = FMath::Clamp(CoalSR,                       0.5f, 1.5f);
 }
+
+// ============================================================================
+// Player API.
+// ============================================================================
+
+UBuilding* UEconomySubsystem::FindBuildingById(FName BuildingId) const
+{
+	const UWorldState* World = ResolveWorldState();
+	if (!World) return nullptr;
+
+	for (const auto& Pair : World->Provinces)
+	{
+		const UProvince* Prov = Pair.Value.Get();
+		if (!Prov) continue;
+		for (const TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+		{
+			if (UBuilding* B = BPtr.Get())
+			{
+				if (B->Id == BuildingId)
+				{
+					return B;
+				}
+			}
+		}
+	}
+	return nullptr;
+}
+
+EBuildResult UEconomySubsystem::BuildBuilding(FName NationId, FName ProvinceId, FName BuildingTypeId, EBuildingOwnerKind OwnerKind)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return EBuildResult::Rejected_NoNation;
+
+	UNation* Nation = World->GetNation(NationId);
+	if (!Nation) return EBuildResult::Rejected_NoNation;
+
+	UProvince* Prov = World->GetProvince(ProvinceId);
+	if (!Prov) return EBuildResult::Rejected_NoProvince;
+
+	if (Prov->OwnerNationId != NationId) return EBuildResult::Rejected_WrongOwner;
+
+	UBuildingTypeAsset* BT = GetBuildingType(BuildingTypeId);
+	if (!BT) return EBuildResult::Rejected_NoBuildingType;
+
+	if (Prov->GetFreeBuildingSlots() <= 0) return EBuildResult::Rejected_NoSlot;
+
+	if (BT->bRequiresRawResource)
+	{
+		const float* P = Prov->RawResourcePotential.Find(BT->RequiredResourceId);
+		if (!P || *P <= 0.f) return EBuildResult::Rejected_NoRawResource;
+	}
+
+	// Verifica caixa.
+	if (Nation->Treasury.Balance < BT->ConstructionMonetaryCost)
+	{
+		return EBuildResult::Rejected_InsufficientFunds;
+	}
+
+	// Verifica goods (sem subtrair ainda).
+	for (const FGoodAmount& Cost : BT->ConstructionCost)
+	{
+		if (Nation->Stockpile.GetStock(Cost.GoodId) < Cost.Amount)
+		{
+			return EBuildResult::Rejected_InsufficientGoods;
+		}
+	}
+
+	// Debita.
+	Nation->Treasury.Balance -= BT->ConstructionMonetaryCost;
+	for (const FGoodAmount& Cost : BT->ConstructionCost)
+	{
+		Nation->Stockpile.TryConsume(Cost.GoodId, Cost.Amount);
+	}
+
+	// Cria.
+	UBuilding* B = NewObject<UBuilding>(Prov);
+	B->Id = FName(*FString::Printf(TEXT("%s.%s.%d"),
+		*ProvinceId.ToString(), *BuildingTypeId.ToString(), Prov->Buildings.Num()));
+	B->BuildingType = BT;
+	B->ProvinceId = ProvinceId;
+	B->Level = 1;
+	B->OwnerKind = OwnerKind;
+	B->OwnerProvinceId = (OwnerKind == EBuildingOwnerKind::Private) ? ProvinceId : NAME_None;
+	B->CurrentProductionMethod = BT->DefaultMethod;
+	B->ConstructionDaysRemaining = BT->ConstructionDays;
+	Prov->Buildings.Add(B);
+
+	UE_LOG(LogStrategosCore, Log, TEXT("Build issued: %s (%s) in %s by %s, %d days"),
+		*B->Id.ToString(), *UEnum::GetValueAsString(OwnerKind),
+		*ProvinceId.ToString(), *NationId.ToString(), BT->ConstructionDays);
+
+	return EBuildResult::Issued;
+}
+
+EEconomyActionResult UEconomySubsystem::DemolishBuilding(FName BuildingId)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return EEconomyActionResult::NotFound;
+
+	for (auto& ProvPair : World->Provinces)
+	{
+		UProvince* Prov = ProvPair.Value.Get();
+		if (!Prov) continue;
+
+		for (int32 i = 0; i < Prov->Buildings.Num(); ++i)
+		{
+			UBuilding* B = Prov->Buildings[i].Get();
+			if (!B || B->Id != BuildingId) continue;
+
+			// Refund 50% do custo monetário para a nação dona da prov.
+			if (UNation* OwnerNation = World->GetNation(Prov->OwnerNationId))
+			{
+				if (UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous())
+				{
+					const float Refund = BT->ConstructionMonetaryCost * 0.5f * static_cast<float>(B->Level);
+					if (B->OwnerKind == EBuildingOwnerKind::Government)
+					{
+						OwnerNation->Treasury.Balance += Refund;
+					}
+					else if (UProvince* OwnerProv = World->GetProvince(B->OwnerProvinceId))
+					{
+						if (FPopGroup* Bourg = OwnerProv->Pops.Find(EPopStratum::Bourgeoisie))
+						{
+							Bourg->Wealth += Refund;
+						}
+					}
+				}
+			}
+
+			Prov->Buildings.RemoveAt(i);
+			UE_LOG(LogStrategosCore, Log, TEXT("Demolished %s"), *BuildingId.ToString());
+			return EEconomyActionResult::Ok;
+		}
+	}
+	return EEconomyActionResult::NotFound;
+}
+
+EEconomyActionResult UEconomySubsystem::UpgradeBuildingLevel(FName BuildingId)
+{
+	UBuilding* B = FindBuildingById(BuildingId);
+	if (!B) return EEconomyActionResult::NotFound;
+	if (B->IsUnderConstruction()) return EEconomyActionResult::Invalid;
+
+	UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous();
+	if (!BT) return EEconomyActionResult::Invalid;
+	if (B->Level >= BT->MaxLevel) return EEconomyActionResult::Invalid;
+
+	UWorldState* World = ResolveWorldState();
+	if (!World) return EEconomyActionResult::NotFound;
+	UProvince* Prov = World->GetProvince(B->ProvinceId);
+	if (!Prov) return EEconomyActionResult::NotFound;
+	UNation* Nation = World->GetNation(Prov->OwnerNationId);
+	if (!Nation) return EEconomyActionResult::NotFound;
+
+	if (Nation->Treasury.Balance < BT->ConstructionMonetaryCost) return EEconomyActionResult::NotPermitted;
+	for (const FGoodAmount& Cost : BT->ConstructionCost)
+	{
+		if (Nation->Stockpile.GetStock(Cost.GoodId) < Cost.Amount) return EEconomyActionResult::NotPermitted;
+	}
+
+	Nation->Treasury.Balance -= BT->ConstructionMonetaryCost;
+	for (const FGoodAmount& Cost : BT->ConstructionCost)
+	{
+		Nation->Stockpile.TryConsume(Cost.GoodId, Cost.Amount);
+	}
+
+	++B->Level;
+	UE_LOG(LogStrategosCore, Log, TEXT("Upgraded %s to L%d"), *BuildingId.ToString(), B->Level);
+	return EEconomyActionResult::Ok;
+}
+
+EEconomyActionResult UEconomySubsystem::ChangeProductionMethod(FName BuildingId, FName NewMethodId)
+{
+	UBuilding* B = FindBuildingById(BuildingId);
+	if (!B) return EEconomyActionResult::NotFound;
+
+	UProductionMethodAsset* NewPM = GetProductionMethod(NewMethodId);
+	if (!NewPM) return EEconomyActionResult::NotFound;
+
+	// Verifica que o NewPM está entre os AvailableMethods do BuildingType.
+	UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous();
+	if (!BT) return EEconomyActionResult::Invalid;
+
+	bool bValid = false;
+	for (const TSoftObjectPtr<UProductionMethodAsset>& Soft : BT->AvailableMethods)
+	{
+		if (Soft.GetUniqueID() == NewPM->GetPrimaryAssetId().PrimaryAssetName ||
+		    Soft.LoadSynchronous() == NewPM)
+		{
+			bValid = true;
+			break;
+		}
+	}
+	if (!bValid) return EEconomyActionResult::NotPermitted;
+
+	B->CurrentProductionMethod = NewPM;
+	UE_LOG(LogStrategosCore, Log, TEXT("Building %s -> PM %s"),
+		*BuildingId.ToString(), *NewMethodId.ToString());
+	return EEconomyActionResult::Ok;
+}
+
+EEconomyActionResult UEconomySubsystem::ToggleProductionModifier(FName BuildingId, FName ModifierId, bool bActivate)
+{
+	UBuilding* B = FindBuildingById(BuildingId);
+	if (!B) return EEconomyActionResult::NotFound;
+
+	UProductionModifierAsset* Mod = GetProductionModifier(ModifierId);
+	if (!Mod) return EEconomyActionResult::NotFound;
+
+	const int32 ExistingIdx = B->ActiveProductionModifiers.IndexOfByPredicate(
+		[Mod](const TSoftObjectPtr<UProductionModifierAsset>& Soft)
+		{
+			return Soft.LoadSynchronous() == Mod;
+		});
+
+	if (!bActivate)
+	{
+		if (ExistingIdx != INDEX_NONE)
+		{
+			B->ActiveProductionModifiers.RemoveAt(ExistingIdx);
+		}
+		return EEconomyActionResult::Ok;
+	}
+
+	if (ExistingIdx != INDEX_NONE)
+	{
+		return EEconomyActionResult::Ok; // já ativo
+	}
+
+	// Mutex group: remove qualquer outro modifier do mesmo grupo.
+	if (!Mod->MutexGroup.IsNone())
+	{
+		for (int32 i = B->ActiveProductionModifiers.Num() - 1; i >= 0; --i)
+		{
+			UProductionModifierAsset* Existing = B->ActiveProductionModifiers[i].LoadSynchronous();
+			if (Existing && Existing->MutexGroup == Mod->MutexGroup)
+			{
+				B->ActiveProductionModifiers.RemoveAt(i);
+			}
+		}
+	}
+
+	B->ActiveProductionModifiers.Add(Mod);
+	UE_LOG(LogStrategosCore, Log, TEXT("Building %s + modifier %s (mutex=%s)"),
+		*BuildingId.ToString(), *ModifierId.ToString(), *Mod->MutexGroup.ToString());
+	return EEconomyActionResult::Ok;
+}
+
+void UEconomySubsystem::SetTaxLevel(FName NationId, EPopStratum Stratum, ETaxLevel NewLevel)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+	UNation* Nation = World->GetNation(NationId);
+	if (!Nation) return;
+	Nation->Treasury.TaxLevelByStratum.FindOrAdd(Stratum) = NewLevel;
+}
