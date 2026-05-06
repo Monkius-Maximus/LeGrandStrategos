@@ -6,8 +6,113 @@
 #include "World/Nation.h"
 #include "World/Army.h"
 #include "World/Leader.h"
+#include "Economy/PopGroup.h"
+#include "Economy/PopStratum.h"
+#include "Economy/TaxLevel.h"
 #include "Engine/DataTable.h"
 #include "StrategosCore.h"
+
+namespace
+{
+	// Mapeia ETerrainType → potencial de extração natural por bem.
+	void ApplyTerrainPotential(UProvince& Prov)
+	{
+		Prov.RawResourcePotential.Empty();
+
+		switch (Prov.Terrain)
+		{
+			case ETerrainType::Mountains:
+				Prov.RawResourcePotential.Add(TEXT("IronOre"), 1.0f);
+				Prov.RawResourcePotential.Add(TEXT("Coal"),    0.7f);
+				Prov.BuildingSlots = 2;
+				break;
+			case ETerrainType::Hills:
+				Prov.RawResourcePotential.Add(TEXT("IronOre"), 0.6f);
+				Prov.RawResourcePotential.Add(TEXT("Coal"),    0.4f);
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    0.3f);
+				Prov.BuildingSlots = 3;
+				break;
+			case ETerrainType::Forest:
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    1.0f);
+				Prov.RawResourcePotential.Add(TEXT("Grain"),   0.4f);
+				Prov.BuildingSlots = 3;
+				break;
+			case ETerrainType::Plains:
+				Prov.RawResourcePotential.Add(TEXT("Grain"),   1.0f);
+				Prov.RawResourcePotential.Add(TEXT("Cotton"),  0.5f);
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    0.3f);
+				Prov.BuildingSlots = 4;
+				break;
+			case ETerrainType::Coast:
+				Prov.RawResourcePotential.Add(TEXT("Grain"),   0.5f);
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    0.4f);
+				Prov.RawResourcePotential.Add(TEXT("Cotton"),  0.4f);
+				Prov.BuildingSlots = 4;
+				break;
+			case ETerrainType::Marsh:
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    0.3f);
+				Prov.BuildingSlots = 2;
+				break;
+			case ETerrainType::Tundra:
+				Prov.RawResourcePotential.Add(TEXT("Wood"),    0.2f);
+				Prov.BuildingSlots = 2;
+				break;
+			case ETerrainType::Desert:
+				Prov.BuildingSlots = 1;
+				break;
+			case ETerrainType::Water:
+			default:
+				Prov.BuildingSlots = 0;
+				break;
+		}
+	}
+
+	// Distribui POPs default por província conforme terreno e dono.
+	void SeedPopsForProvince(UProvince& Prov, bool bIsCapital)
+	{
+		Prov.Pops.Empty();
+
+		const int32 BaseLab     = bIsCapital ? 8000 : 5000;
+		const int32 BaseArt     = bIsCapital ? 1500 : 800;
+		const int32 BaseFactory = bIsCapital ? 600  : 200;
+		const int32 BaseBourg   = bIsCapital ? 200  : 80;
+
+		auto Add = [&](EPopStratum S, int32 Pop, float Wealth)
+		{
+			FPopGroup G;
+			G.Stratum = S;
+			G.Population = Pop;
+			G.Wealth = Wealth;
+			G.Loyalty = 1.0f;
+			Prov.Pops.Add(S, G);
+		};
+
+		Add(EPopStratum::Laborer,       BaseLab,     50.f);
+		Add(EPopStratum::Artisan,       BaseArt,     150.f);
+		Add(EPopStratum::FactoryWorker, BaseFactory, 200.f);
+		Add(EPopStratum::Bourgeoisie,   BaseBourg,   1000.f);
+	}
+
+	// Define tax levels default e sementes de stockpile/treasury.
+	void SeedNationEconomy(UNation& Nation)
+	{
+		Nation.Treasury.Balance = 500.f;
+		Nation.Treasury.AnnualInterestRate = 0.05f;
+
+		Nation.Treasury.TaxLevelByStratum.Add(EPopStratum::Laborer,       ETaxLevel::Medium);
+		Nation.Treasury.TaxLevelByStratum.Add(EPopStratum::Artisan,       ETaxLevel::Medium);
+		Nation.Treasury.TaxLevelByStratum.Add(EPopStratum::FactoryWorker, ETaxLevel::Medium);
+		Nation.Treasury.TaxLevelByStratum.Add(EPopStratum::Bourgeoisie,   ETaxLevel::Low);
+
+		// Sementes de bens essenciais para o jogo não travar logo no primeiro tick.
+		Nation.Stockpile.Stocks.Add(TEXT("Bread"),     500.f);
+		Nation.Stockpile.Stocks.Add(TEXT("Grain"),     300.f);
+		Nation.Stockpile.Stocks.Add(TEXT("Garments"),  200.f);
+		Nation.Stockpile.Stocks.Add(TEXT("Iron"),      100.f);
+		Nation.Stockpile.Stocks.Add(TEXT("Coal"),      200.f);
+		Nation.Stockpile.Stocks.Add(TEXT("Lumber"),    150.f);
+	}
+}
 
 namespace
 {
@@ -109,6 +214,8 @@ bool UWorldBootstrapper::ApplyBootstrap(UWorldState* WorldState, UWorldBootstrap
 			P->AdjacentProvinceIds = Row.AdjacentProvinceIds;
 			P->MapPosition = Row.MapPosition;
 			P->Terrain = Row.Terrain;
+			ApplyTerrainPotential(*P);
+			SeedPopsForProvince(*P, /*bIsCapital=*/false);
 		});
 
 	// 3. Nações + líderes iniciais.
@@ -124,7 +231,19 @@ bool UWorldBootstrapper::ApplyBootstrap(UWorldState* WorldState, UWorldBootstrap
 			N->NationalIdeas = Row.NationalIdeas;
 			ApplyNationalIdeasToAffinity(*N, IdeasIndex);
 			N->CurrentLeader = CreateLeader(*N, Row.StartingLeaderName, Row.StartingLeaderArchetype, StartYear);
+			SeedNationEconomy(*N);
 		});
+
+	// 3b. Re-seed pops da capital com valores maiores.
+	for (const auto& NationPair : WorldState->Nations)
+	{
+		const UNation* N = NationPair.Value.Get();
+		if (!N) continue;
+		if (UProvince* Cap = WorldState->GetProvince(N->CapitalProvinceId))
+		{
+			SeedPopsForProvince(*Cap, /*bIsCapital=*/true);
+		}
+	}
 
 	// 4. Reconciliar OwnedProvinceIds em cada Nation a partir dos donos das províncias.
 	for (auto& NationPair : WorldState->Nations)
@@ -210,6 +329,8 @@ void UWorldBootstrapper::ApplyDefaultSandbox(UWorldState* WorldState)
 		P->OwnerNationId = SP.Owner;
 		P->MapPosition = SP.Pos;
 		P->Terrain = SP.T;
+		ApplyTerrainPotential(*P);
+		SeedPopsForProvince(*P, /*bIsCapital=*/false);
 	}
 
 	// Adjacências em grid (vizinhos cardeais).
@@ -262,6 +383,12 @@ void UWorldBootstrapper::ApplyDefaultSandbox(UWorldState* WorldState)
 		N->NationalIdeas = SN.Ideas;
 		ApplyNationalIdeasToAffinity(*N, IdeasIndex);
 		N->CurrentLeader = CreateLeader(*N, NAME_None, SN.StartArch, 1836);
+		SeedNationEconomy(*N);
+
+		if (UProvince* Cap = WorldState->GetProvince(SN.Capital))
+		{
+			SeedPopsForProvince(*Cap, /*bIsCapital=*/true);
+		}
 	}
 
 	// Reconciliar OwnedProvinceIds.
