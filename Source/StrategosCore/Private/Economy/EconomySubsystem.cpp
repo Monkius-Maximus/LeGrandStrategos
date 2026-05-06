@@ -187,6 +187,8 @@ void UEconomySubsystem::HandleMonthTick(FDateTime CurrentDate)
 
 void UEconomySubsystem::RunMonthlyTickForNation(UNation& Nation, const FDateTime& CurrentDate)
 {
+	UWorldState* World = ResolveWorldState();
+
 	// Reset contadores mensais antes das fases que escrevem neles.
 	Nation.Stockpile.ResetMonthlyCounters();
 	Nation.Treasury.Income_Taxes = 0.f;
@@ -196,6 +198,20 @@ void UEconomySubsystem::RunMonthlyTickForNation(UNation& Nation, const FDateTime
 	Nation.Treasury.Expense_ArmyUpkeep = 0.f;
 	Nation.Treasury.Expense_AdminCost = 0.f;
 	Nation.Treasury.Expense_DebtInterest = 0.f;
+
+	if (World)
+	{
+		for (const FName& ProvId : Nation.OwnedProvinceIds)
+		{
+			if (UProvince* Prov = World->GetProvince(ProvId))
+			{
+				for (auto& Pair : Prov->Pops)
+				{
+					Pair.Value.WageEarnedLastMonth = 0.f;
+				}
+			}
+		}
+	}
 
 	Phase_PopGrowth(Nation);
 	Phase_AssignEmployment(Nation);
@@ -445,10 +461,191 @@ void UEconomySubsystem::Phase_RunProduction(UNation& Nation)
 }
 
 // ----------------------------------------------------------------------------
-// Fases 4-9: stubs — implementadas nos commits 7-8.
+// Helper: cesta de consumo por estrato.
+// TODO Etapa 3: extrair para UPopConsumptionBasketAsset (DataAsset) para que
+// designers e modders ajustem sem recompilar.
 
-void UEconomySubsystem::Phase_PopConsumption(UNation& Nation) {}
-void UEconomySubsystem::Phase_PaywagesAndProfits(UNation& Nation) {}
+namespace
+{
+	struct FBasketEntry
+	{
+		FName GoodId;
+		float AmountPerPop;
+	};
+
+	const TArray<FBasketEntry>& GetConsumptionBasket(EPopStratum Stratum)
+	{
+		static const TArray<FBasketEntry> Empty;
+		static const TArray<FBasketEntry> Laborer        = { { TEXT("Bread"), 1.0f } };
+		static const TArray<FBasketEntry> Artisan        = { { TEXT("Bread"), 1.0f }, { TEXT("Garments"), 0.3f } };
+		static const TArray<FBasketEntry> FactoryWorker  = { { TEXT("Bread"), 1.0f }, { TEXT("Garments"), 0.3f } };
+		static const TArray<FBasketEntry> Bourgeoisie    = { { TEXT("Bread"), 1.0f }, { TEXT("Garments"), 0.8f } };
+
+		switch (Stratum)
+		{
+			case EPopStratum::Laborer:       return Laborer;
+			case EPopStratum::Artisan:       return Artisan;
+			case EPopStratum::FactoryWorker: return FactoryWorker;
+			case EPopStratum::Bourgeoisie:   return Bourgeoisie;
+			default:                          return Empty;
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 4: PopConsumption.
+//
+// Cada estrato tenta consumir sua cesta a partir do stockpile nacional. Cesta
+// atendida → +0.5% loyalty/mês. Faltou algum item → -2% loyalty/mês. Demand é
+// registrada mesmo quando o consumo é parcial — o preço sobe e o forward
+// hook MilitaryReadiness cai.
+
+void UEconomySubsystem::Phase_PopConsumption(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+
+		for (auto& Pair : Prov->Pops)
+		{
+			FPopGroup& G = Pair.Value;
+			if (G.Population <= 0) continue;
+
+			const TArray<FBasketEntry>& Basket = GetConsumptionBasket(G.Stratum);
+			if (Basket.Num() == 0) continue;
+
+			bool bAllSatisfied = true;
+			for (const FBasketEntry& Item : Basket)
+			{
+				const float Wanted = Item.AmountPerPop * static_cast<float>(G.Population);
+				if (Wanted <= 0.f) continue;
+
+				Nation.Stockpile.RecordDemand(Item.GoodId, Wanted);
+				const float Got = Nation.Stockpile.ConsumeUpTo(Item.GoodId, Wanted);
+				if (Got < Wanted * 0.95f)
+				{
+					bAllSatisfied = false;
+				}
+			}
+
+			G.Loyalty = FMath::Clamp(
+				G.Loyalty + (bAllSatisfied ? 0.005f : -0.02f),
+				0.f, 1.f);
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 5: PaywagesAndProfits.
+//
+// Para cada prédio ativo:
+//   Revenue   = Σ Output × DynamicPrice
+//   InputCost = Σ Input  × DynamicPrice
+//   Wages     = Σ Employment × WagePerWorker × WageMult   (creditado em POPs)
+//   Maint     = MaintenancePerSlot × Level × MaintMult
+//   Profit    = Revenue - InputCost - Wages - Maint
+//
+// Government → Profit vai para Treasury (decomposto em Income_StateProfits e
+//              Expense_Maintenance para o HUD ver breakdown)
+// Private    → Profit vai para Wealth da Bourgeoisie em OwnerProvinceId
+//              (clamp >= 0; bankruptcy real entra na Etapa 3)
+
+void UEconomySubsystem::Phase_PaywagesAndProfits(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+
+		for (TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+		{
+			UBuilding* B = BPtr.Get();
+			if (!B || !B->IsActive()) continue;
+
+			UProductionMethodAsset* PM = B->CurrentProductionMethod.LoadSynchronous();
+			if (!PM) continue;
+
+			const FAggregatedModifiers Mods = ComputeModifiers(*B);
+
+			float Revenue = 0.f;
+			for (const auto& Pair : B->LastTickOutputs)
+			{
+				Revenue += Pair.Value * GetDynamicPrice(&Nation, Pair.Key);
+			}
+			float InputCost = 0.f;
+			for (const auto& Pair : B->LastTickInputs)
+			{
+				InputCost += Pair.Value * GetDynamicPrice(&Nation, Pair.Key);
+			}
+
+			// Pagar salários (e creditar em POPs).
+			float TotalWages = 0.f;
+			for (const FStratumEmployment& Need : PM->EmploymentPerSlot)
+			{
+				const int32* E = B->LastTickEmployment.Find(Need.Stratum);
+				const int32 Eff = E ? *E : 0;
+				if (Eff <= 0) continue;
+				const float Wages = static_cast<float>(Eff) * Need.WagePerWorker * Mods.Wage;
+				TotalWages += Wages;
+				if (FPopGroup* Pop = Prov->Pops.Find(Need.Stratum))
+				{
+					Pop->WageEarnedLastMonth += Wages;
+					Pop->Wealth += Wages;
+				}
+			}
+
+			const float Maintenance = PM->MaintenancePerSlot * static_cast<float>(B->Level) * Mods.Maintenance;
+			const float Profit = Revenue - InputCost - TotalWages - Maintenance;
+
+			B->LastTickWagesPaid = TotalWages;
+			B->LastTickProfit = Profit;
+
+			if (B->OwnerKind == EBuildingOwnerKind::Government)
+			{
+				// Decompõe para que o HUD mostre o breakdown completo.
+				Nation.Treasury.Income_StateProfits += (Revenue - InputCost - TotalWages);
+				Nation.Treasury.Expense_Maintenance += Maintenance;
+			}
+			else
+			{
+				if (UProvince* OwnerProv = World->GetProvince(B->OwnerProvinceId))
+				{
+					if (FPopGroup* Bourg = OwnerProv->Pops.Find(EPopStratum::Bourgeoisie))
+					{
+						Bourg->Wealth = FMath::Max(0.f, Bourg->Wealth + Profit);
+					}
+				}
+			}
+
+			// Aplica MonthlyLoyaltyDelta dos modifiers nos workers da província.
+			if (Mods.MonthlyLoyaltyDelta != 0.f)
+			{
+				const TArray<EPopStratum> Affected = {
+					EPopStratum::Laborer, EPopStratum::Artisan, EPopStratum::FactoryWorker
+				};
+				for (EPopStratum S : Affected)
+				{
+					if (FPopGroup* Pop = Prov->Pops.Find(S))
+					{
+						Pop->Loyalty = FMath::Clamp(Pop->Loyalty + Mods.MonthlyLoyaltyDelta, 0.f, 1.f);
+					}
+				}
+			}
+		}
+
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fases 6-9: stubs — implementadas no commit 8.
+
 void UEconomySubsystem::Phase_CollectTaxes(UNation& Nation) {}
 void UEconomySubsystem::Phase_PayExpenses(UNation& Nation) {}
 void UEconomySubsystem::Phase_SettleTreasury(UNation& Nation) {}
