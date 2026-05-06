@@ -8,6 +8,32 @@
 class UTimeSubsystem;
 class UMapSubsystem;
 class USaveSubsystem;
+class UEconomySubsystem;
+class UNation;
+
+USTRUCT(BlueprintType)
+struct STRATEGOSUI_API FShortfallEntry
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly) FName GoodId;
+	UPROPERTY(BlueprintReadOnly) float Demand = 0.f;
+	UPROPERTY(BlueprintReadOnly) float Supply = 0.f;
+	UPROPERTY(BlueprintReadOnly) float ShortfallAmount = 0.f;
+};
+
+USTRUCT(BlueprintType)
+struct STRATEGOSUI_API FBuildingHUDRow
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly) FName BuildingId;
+	UPROPERTY(BlueprintReadOnly) FName ProvinceId;
+	UPROPERTY(BlueprintReadOnly) FText BuildingTypeName;
+	UPROPERTY(BlueprintReadOnly) int32 Level = 1;
+	UPROPERTY(BlueprintReadOnly) bool bUnderConstruction = false;
+	UPROPERTY(BlueprintReadOnly) int32 ConstructionDaysRemaining = 0;
+	UPROPERTY(BlueprintReadOnly) float LastTickProfit = 0.f;
+	UPROPERTY(BlueprintReadOnly) bool bIsPrivate = false;
+};
 
 /**
  * UStrategosHUDWidget — Base C++ do HUD estratégico.
@@ -54,6 +80,45 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD")
 	FText GetSelectedProvinceOwnerName() const;
 
+	// --- Economia ----------------------------------------------------------
+
+	/** Resumo financeiro do jogador para mostrar na top bar. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetTreasuryBalance() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetMonthlyIncome() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetMonthlyExpenses() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetDebtBalance() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetMilitaryReadinessIndex() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetCivilianMoraleIndex() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetIndustrialCapacityIndex() const;
+
+	/** Lê quanto da nação tem do bem; útil para mostrar reservas estratégicas. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetGoodStock(FName GoodId) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	float GetGoodPrice(FName GoodId) const;
+
+	/** Top N bens com maior shortfall (Demand>Supply). Pega do tick anterior. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	TArray<FShortfallEntry> GetTopShortfalls(int32 MaxEntries = 3) const;
+
+	/** Lista de prédios da nação do jogador para o painel da economia. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
+	TArray<FBuildingHUDRow> GetPlayerBuildings() const;
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -69,4 +134,6 @@ private:
 	UTimeSubsystem* ResolveTime() const;
 	UMapSubsystem* ResolveMap() const;
 	USaveSubsystem* ResolveSave() const;
+	UEconomySubsystem* ResolveEconomy() const;
+	UNation* ResolvePlayerNation() const;
 };

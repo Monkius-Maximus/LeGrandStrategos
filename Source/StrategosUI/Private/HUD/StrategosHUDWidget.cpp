@@ -3,11 +3,15 @@
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Map/MapSubsystem.h"
 #include "Save/SaveSubsystem.h"
+#include "Economy/EconomySubsystem.h"
+#include "Economy/Building.h"
+#include "Economy/BuildingTypeAsset.h"
 #include "World/WorldState.h"
 #include "World/Province.h"
 #include "World/Nation.h"
 #include "Game/StrategosGameState.h"
 #include "Engine/World.h"
+#include "Algo/Sort.h"
 
 void UStrategosHUDWidget::NativeConstruct()
 {
@@ -151,4 +155,152 @@ FText UStrategosHUDWidget::GetSelectedProvinceOwnerName() const
 void UStrategosHUDWidget::HandleProvinceSelected(FName ProvinceId)
 {
 	OnSelectionChanged(ProvinceId);
+}
+
+// ============================================================================
+// Economia.
+// ============================================================================
+
+UEconomySubsystem* UStrategosHUDWidget::ResolveEconomy() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetSubsystem<UEconomySubsystem>() : nullptr;
+}
+
+UNation* UStrategosHUDWidget::ResolvePlayerNation() const
+{
+	const UWorld* World = GetWorld();
+	if (!World) return nullptr;
+	AStrategosGameState* GS = World->GetGameState<AStrategosGameState>();
+	if (!GS || !GS->GetWorldState()) return nullptr;
+	return GS->GetWorldState()->GetNation(GS->GetWorldState()->PlayerNationId);
+}
+
+float UStrategosHUDWidget::GetTreasuryBalance() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->Treasury.Balance : 0.f;
+}
+
+float UStrategosHUDWidget::GetMonthlyIncome() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->Treasury.GetMonthlyIncome() : 0.f;
+}
+
+float UStrategosHUDWidget::GetMonthlyExpenses() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->Treasury.GetMonthlyExpenses() : 0.f;
+}
+
+float UStrategosHUDWidget::GetDebtBalance() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->Treasury.DebtBalance : 0.f;
+}
+
+float UStrategosHUDWidget::GetMilitaryReadinessIndex() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->StrategicIndices.MilitaryReadinessIndex : 1.f;
+}
+
+float UStrategosHUDWidget::GetCivilianMoraleIndex() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->StrategicIndices.CivilianMoraleIndex : 1.f;
+}
+
+float UStrategosHUDWidget::GetIndustrialCapacityIndex() const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->StrategicIndices.IndustrialCapacityIndex : 1.f;
+}
+
+float UStrategosHUDWidget::GetGoodStock(FName GoodId) const
+{
+	const UNation* N = ResolvePlayerNation();
+	return N ? N->Stockpile.GetStock(GoodId) : 0.f;
+}
+
+float UStrategosHUDWidget::GetGoodPrice(FName GoodId) const
+{
+	const UEconomySubsystem* Econ = ResolveEconomy();
+	const UNation* N = ResolvePlayerNation();
+	return Econ ? Econ->GetDynamicPrice(N, GoodId) : 0.f;
+}
+
+TArray<FShortfallEntry> UStrategosHUDWidget::GetTopShortfalls(int32 MaxEntries) const
+{
+	TArray<FShortfallEntry> Out;
+	const UNation* N = ResolvePlayerNation();
+	if (!N) return Out;
+
+	for (const auto& Pair : N->Stockpile.Demand)
+	{
+		const float Demand = Pair.Value;
+		const float* SupplyPtr = N->Stockpile.Supply.Find(Pair.Key);
+		const float Supply = SupplyPtr ? *SupplyPtr : 0.f;
+		const float Diff = Demand - Supply;
+		if (Diff <= 0.f) continue;
+
+		FShortfallEntry E;
+		E.GoodId = Pair.Key;
+		E.Demand = Demand;
+		E.Supply = Supply;
+		E.ShortfallAmount = Diff;
+		Out.Add(E);
+	}
+
+	Algo::Sort(Out, [](const FShortfallEntry& A, const FShortfallEntry& B)
+	{
+		return A.ShortfallAmount > B.ShortfallAmount;
+	});
+
+	if (Out.Num() > MaxEntries)
+	{
+		Out.SetNum(MaxEntries);
+	}
+	return Out;
+}
+
+TArray<FBuildingHUDRow> UStrategosHUDWidget::GetPlayerBuildings() const
+{
+	TArray<FBuildingHUDRow> Out;
+	const UNation* N = ResolvePlayerNation();
+	if (!N) return Out;
+
+	const UWorld* World = GetWorld();
+	if (!World) return Out;
+	AStrategosGameState* GS = World->GetGameState<AStrategosGameState>();
+	if (!GS || !GS->GetWorldState()) return Out;
+	UWorldState* WS = GS->GetWorldState();
+
+	for (const FName& ProvId : N->OwnedProvinceIds)
+	{
+		const UProvince* Prov = WS->GetProvince(ProvId);
+		if (!Prov) continue;
+
+		for (const TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+		{
+			const UBuilding* B = BPtr.Get();
+			if (!B) continue;
+
+			FBuildingHUDRow R;
+			R.BuildingId = B->Id;
+			R.ProvinceId = B->ProvinceId;
+			R.Level = B->Level;
+			R.bUnderConstruction = B->IsUnderConstruction();
+			R.ConstructionDaysRemaining = B->ConstructionDaysRemaining;
+			R.LastTickProfit = B->LastTickProfit;
+			R.bIsPrivate = (B->OwnerKind == EBuildingOwnerKind::Private);
+			if (UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous())
+			{
+				R.BuildingTypeName = BT->DisplayName;
+			}
+			Out.Add(R);
+		}
+	}
+	return Out;
 }
