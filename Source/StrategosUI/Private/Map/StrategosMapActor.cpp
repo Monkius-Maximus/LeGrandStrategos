@@ -1,11 +1,14 @@
 #include "Map/StrategosMapActor.h"
 #include "StrategosUI.h"
 #include "Map/StrategosProvinceVisualActor.h"
+#include "Army/StrategosArmyVisualActor.h"
 #include "Map/MapSubsystem.h"
+#include "Strategy/MilitarySubsystem.h"
 #include "Game/StrategosGameState.h"
 #include "World/WorldState.h"
 #include "World/Province.h"
 #include "World/Nation.h"
+#include "World/Army.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -28,6 +31,11 @@ void AStrategosMapActor::BeginPlay()
 		Map->OnProvinceSelected.AddDynamic(this, &AStrategosMapActor::HandleProvinceSelected);
 		Map->OnProvinceHovered.AddDynamic(this, &AStrategosMapActor::HandleProvinceHovered);
 	}
+
+	if (UMilitarySubsystem* Military = GetWorld()->GetSubsystem<UMilitarySubsystem>())
+	{
+		Military->OnArmyArrived.AddDynamic(this, &AStrategosMapActor::HandleArmyArrived);
+	}
 }
 
 void AStrategosMapActor::EndPlay(const EEndPlayReason::Type Reason)
@@ -36,6 +44,10 @@ void AStrategosMapActor::EndPlay(const EEndPlayReason::Type Reason)
 	{
 		Map->OnProvinceSelected.RemoveDynamic(this, &AStrategosMapActor::HandleProvinceSelected);
 		Map->OnProvinceHovered.RemoveDynamic(this, &AStrategosMapActor::HandleProvinceHovered);
+	}
+	if (UMilitarySubsystem* Military = GetWorld()->GetSubsystem<UMilitarySubsystem>())
+	{
+		Military->OnArmyArrived.RemoveDynamic(this, &AStrategosMapActor::HandleArmyArrived);
 	}
 	Super::EndPlay(Reason);
 }
@@ -91,8 +103,45 @@ void AStrategosMapActor::BuildVisuals()
 		Map->RebuildSpatialIndex();
 	}
 
-	UE_LOG(LogStrategosUI, Log, TEXT("MapActor: spawned %d province visuals"),
-		ProvinceVisuals.Num());
+	// Spawn dos visuais de exército, se classe configurada.
+	if (ArmyVisualClass)
+	{
+		for (const auto& Pair : WorldState->Armies)
+		{
+			const UArmy* Army = Pair.Value.Get();
+			if (!Army) continue;
+
+			FActorSpawnParameters Params;
+			Params.Owner = this;
+			AStrategosArmyVisualActor* Visual = World->SpawnActor<AStrategosArmyVisualActor>(
+				ArmyVisualClass, FVector::ZeroVector, FRotator::ZeroRotator, Params);
+			if (!Visual) continue;
+
+			Visual->InitializeFromArmy(Army->Id, Army->OwnerNationId);
+			if (const UNation* Owner = WorldState->GetNation(Army->OwnerNationId))
+			{
+				Visual->SetOwnerColor(Owner->Color);
+			}
+			if (const AStrategosProvinceVisualActor* Host = ProvinceVisuals.FindRef(Army->CurrentProvinceId))
+			{
+				Visual->SetActorLocation(Host->GetActorLocation() + FVector(0, 0, 50.f));
+			}
+			ArmyVisuals.Add(Army->Id, Visual);
+		}
+	}
+
+	UE_LOG(LogStrategosUI, Log, TEXT("MapActor: spawned %d province visuals, %d army visuals"),
+		ProvinceVisuals.Num(), ArmyVisuals.Num());
+}
+
+void AStrategosMapActor::HandleArmyArrived(FName ArmyId, FName ProvinceId)
+{
+	AStrategosArmyVisualActor* ArmyVisual = ArmyVisuals.FindRef(ArmyId);
+	const AStrategosProvinceVisualActor* HostVisual = ProvinceVisuals.FindRef(ProvinceId);
+	if (ArmyVisual && HostVisual)
+	{
+		ArmyVisual->SetActorLocation(HostVisual->GetActorLocation() + FVector(0, 0, 50.f));
+	}
 }
 
 void AStrategosMapActor::HandleProvinceSelected(FName ProvinceId)

@@ -5,6 +5,7 @@
 #include "StrategosMapActor.generated.h"
 
 class AStrategosProvinceVisualActor;
+class AStrategosArmyVisualActor;
 class UWorldState;
 
 /**
@@ -36,6 +37,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strategos|Map|Spawn")
 	TSubclassOf<AStrategosProvinceVisualActor> ProvinceVisualClass;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strategos|Map|Spawn")
+	TSubclassOf<AStrategosArmyVisualActor> ArmyVisualClass;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Strategos|Map|Spawn")
 	float SpawnDelaySeconds = 0.1f;
 
@@ -48,10 +52,16 @@ private:
 	UFUNCTION()
 	void HandleProvinceHovered(FName ProvinceId);
 
+	UFUNCTION()
+	void HandleArmyArrived(FName ArmyId, FName ProvinceId);
+
 	UWorldState* ResolveWorldState() const;
 
 	UPROPERTY()
 	TMap<FName, TObjectPtr<AStrategosProvinceVisualActor>> ProvinceVisuals;
+
+	UPROPERTY()
+	TMap<FName, TObjectPtr<AStrategosArmyVisualActor>> ArmyVisuals;
 
 	UPROPERTY()
 	FName CurrentSelected;
