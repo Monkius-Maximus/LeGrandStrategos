@@ -11,6 +11,7 @@
 #include "World/WorldState.h"
 #include "World/Nation.h"
 #include "World/Province.h"
+#include "World/Army.h"
 #include "Engine/World.h"
 
 void UEconomySubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -644,9 +645,137 @@ void UEconomySubsystem::Phase_PaywagesAndProfits(UNation& Nation)
 }
 
 // ----------------------------------------------------------------------------
-// Fases 6-9: stubs — implementadas no commit 8.
+// Helpers de income/expense.
 
-void UEconomySubsystem::Phase_CollectTaxes(UNation& Nation) {}
-void UEconomySubsystem::Phase_PayExpenses(UNation& Nation) {}
-void UEconomySubsystem::Phase_SettleTreasury(UNation& Nation) {}
-void UEconomySubsystem::Phase_ComputeStrategicIndices(UNation& Nation) {}
+namespace
+{
+	float GetBaseTaxPerPopPerMonth(EPopStratum Stratum)
+	{
+		switch (Stratum)
+		{
+			case EPopStratum::Laborer:       return 0.05f;
+			case EPopStratum::Artisan:       return 0.15f;
+			case EPopStratum::FactoryWorker: return 0.20f;
+			case EPopStratum::Bourgeoisie:   return 1.00f;
+			default:                          return 0.f; // estratos stub
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 6: CollectTaxes.
+//
+// Tax = Σ_strata Σ_pops [Population × BaseTax(stratum) × TaxMultiplier(level)]
+// Aplicada loyalty delta correspondente ao nível selecionado.
+
+void UEconomySubsystem::Phase_CollectTaxes(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+
+		for (auto& Pair : Prov->Pops)
+		{
+			FPopGroup& G = Pair.Value;
+			if (G.Population <= 0) continue;
+
+			const float Base = GetBaseTaxPerPopPerMonth(G.Stratum);
+			if (Base <= 0.f) continue;
+
+			const ETaxLevel* LevelPtr = Nation.Treasury.TaxLevelByStratum.Find(G.Stratum);
+			const ETaxLevel Level = LevelPtr ? *LevelPtr : ETaxLevel::Medium;
+
+			const float Collected = static_cast<float>(G.Population) * Base * StrategosTax::Multiplier(Level);
+			Nation.Treasury.Income_Taxes += Collected;
+
+			G.Loyalty = FMath::Clamp(G.Loyalty + StrategosTax::LoyaltyDelta(Level), 0.f, 1.f);
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 7: PayExpenses.
+//
+// ArmyUpkeep : Σ Manpower × 0.001 / mês (balance placeholder)
+// AdminCost  : 10 + 0.5 × Province count (overhead administrativo)
+// DebtInterest: AnnualInterestRate / 12 × DebtBalance
+
+void UEconomySubsystem::Phase_PayExpenses(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	// Army upkeep.
+	for (const auto& Pair : World->Armies)
+	{
+		const UArmy* A = Pair.Value.Get();
+		if (!A || A->OwnerNationId != Nation.Id) continue;
+		Nation.Treasury.Expense_ArmyUpkeep += static_cast<float>(A->ManpowerCount) * 0.001f;
+	}
+
+	// Admin overhead.
+	const float ProvinceCount = static_cast<float>(Nation.OwnedProvinceIds.Num());
+	Nation.Treasury.Expense_AdminCost += 10.f + 0.5f * ProvinceCount;
+
+	// Juros sobre dívida.
+	const float MonthlyRate = Nation.Treasury.AnnualInterestRate / 12.f;
+	Nation.Treasury.Expense_DebtInterest += Nation.Treasury.DebtBalance * MonthlyRate;
+}
+
+// ----------------------------------------------------------------------------
+// Fase 8: SettleTreasury.
+//
+// Balance += Income - Expense.
+// Se Balance < 0: empréstimo automático (DebtBalance += -Balance; Balance = 0).
+// Se DebtBalance > 5 × MonthlyIncome: emite OnBankruptcyImminent (sinaliza para
+// HUD/IA, não para o jogo — a entidade que vai aplicar consequências é o
+// UPoliticsSubsystem na Etapa 3).
+
+void UEconomySubsystem::Phase_SettleTreasury(UNation& Nation)
+{
+	const float Income = Nation.Treasury.GetMonthlyIncome();
+	const float Expense = Nation.Treasury.GetMonthlyExpenses();
+	const float Net = Income - Expense;
+
+	Nation.Treasury.Balance += Net;
+
+	if (Nation.Treasury.Balance < 0.f)
+	{
+		const float LoanTaken = -Nation.Treasury.Balance;
+		Nation.Treasury.DebtBalance += LoanTaken;
+		Nation.Treasury.Balance = 0.f;
+
+		UE_LOG(LogStrategosCore, Verbose, TEXT("Treasury: %s took loan of %.1f (debt=%.1f)"),
+			*Nation.Id.ToString(), LoanTaken, Nation.Treasury.DebtBalance);
+	}
+
+	const float DebtCeiling = FMath::Max(50.f, Income * 5.f);
+	if (Nation.Treasury.DebtBalance > DebtCeiling)
+	{
+		OnBankruptcyImminent.Broadcast(Nation.Id);
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 9: ComputeStrategicIndices.
+//
+// Forward hook: Battle/Politics/Events lerão estes números na Etapa 3 sem
+// conhecer detalhes do tick. Convencionalmente 1.0 = neutro, [0.5, 1.5] após
+// clamp final. Usa média de supply ratios dos bens-chave para suavizar.
+
+void UEconomySubsystem::Phase_ComputeStrategicIndices(UNation& Nation)
+{
+	const float ToolsSR    = Nation.Stockpile.GetSupplyRatio(TEXT("Tools"));
+	const float IronSR     = Nation.Stockpile.GetSupplyRatio(TEXT("Iron"));
+	const float BreadSR    = Nation.Stockpile.GetSupplyRatio(TEXT("Bread"));
+	const float GarmentsSR = Nation.Stockpile.GetSupplyRatio(TEXT("Garments"));
+	const float CoalSR     = Nation.Stockpile.GetSupplyRatio(TEXT("Coal"));
+
+	Nation.StrategicIndices.MilitaryReadinessIndex   = FMath::Clamp((ToolsSR + IronSR) * 0.5f,    0.5f, 1.5f);
+	Nation.StrategicIndices.CivilianMoraleIndex      = FMath::Clamp((BreadSR + GarmentsSR) * 0.5f, 0.5f, 1.5f);
+	Nation.StrategicIndices.IndustrialCapacityIndex  = FMath::Clamp(CoalSR,                       0.5f, 1.5f);
+}
