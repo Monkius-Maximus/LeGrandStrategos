@@ -3,6 +3,9 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "World/LeaderArchetype.h"
+#include "Economy/Treasury.h"
+#include "Economy/NationalStockpile.h"
+#include "Economy/StrategicIndices.h"
 #include "Nation.generated.h"
 
 class ULeader;
@@ -52,4 +55,13 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Leadership")
 	TMap<ELeaderArchetype, float> ArchetypeAffinity;
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Economy")
+	FTreasury Treasury;
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Economy")
+	FNationalStockpile Stockpile;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Nation|Economy")
+	FStrategicIndices StrategicIndices;
 };
