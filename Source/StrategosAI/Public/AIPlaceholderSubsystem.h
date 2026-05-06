@@ -9,6 +9,7 @@ class UNation;
 class UArmy;
 class UTimeSubsystem;
 class UMilitarySubsystem;
+class UEconomySubsystem;
 
 /**
  * UAIPlaceholderSubsystem — Comportamento das nações IA na Etapa 1.
@@ -50,13 +51,18 @@ private:
 	void Behavior_Militarist(UNation& Nation, FRandomStream& RNG);
 	void Behavior_Diplomat(UNation& Nation, FRandomStream& RNG);
 	void Behavior_Pragmatist(UNation& Nation, FRandomStream& RNG);
-	// Merchant / Religious / Intellectual: no-op placeholder até Etapa 2-3.
+	void Behavior_Merchant(UNation& Nation, FRandomStream& RNG);
+	// Religious / Intellectual: ainda no-op até Politics/Progress.
+
+	/** Hook econômico chamado independente do arquétipo (preferências base). */
+	void EconomyBehavior_Common(UNation& Nation, FRandomStream& RNG);
 
 	void RollLeaderSuccession(UNation& Nation, int32 Year);
 
 	UWorldState* ResolveWorldState() const;
 	UTimeSubsystem* ResolveTime() const;
 	UMilitarySubsystem* ResolveMilitary() const;
+	UEconomySubsystem* ResolveEconomy() const;
 
 	static FRandomStream MakeStream(FName NationId, int32 Year, int32 Month);
 

@@ -6,6 +6,12 @@
 #include "World/Army.h"
 #include "World/Leader.h"
 #include "World/LeaderArchetype.h"
+#include "Economy/EconomySubsystem.h"
+#include "Economy/Building.h"
+#include "Economy/BuildingTypeAsset.h"
+#include "Economy/PopGroup.h"
+#include "Economy/PopStratum.h"
+#include "Economy/TaxLevel.h"
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Strategy/MilitarySubsystem.h"
 #include "Game/StrategosGameState.h"
@@ -59,6 +65,12 @@ UMilitarySubsystem* UAIPlaceholderSubsystem::ResolveMilitary() const
 {
 	const UWorld* World = GetWorld();
 	return World ? World->GetSubsystem<UMilitarySubsystem>() : nullptr;
+}
+
+UEconomySubsystem* UAIPlaceholderSubsystem::ResolveEconomy() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetSubsystem<UEconomySubsystem>() : nullptr;
 }
 
 FRandomStream UAIPlaceholderSubsystem::MakeStream(FName NationId, int32 Year, int32 Month)
@@ -146,16 +158,18 @@ void UAIPlaceholderSubsystem::RunArchetypeBehavior(UNation& Nation, const FDateT
 
 	FRandomStream RNG = MakeStream(Nation.Id, CurrentDate.GetYear(), CurrentDate.GetMonth());
 
+	// Hook econômico comum (todos arquétipos passam por aqui).
+	EconomyBehavior_Common(Nation, RNG);
+
 	switch (Archetype)
 	{
 		case ELeaderArchetype::Militarist:    Behavior_Militarist(Nation, RNG); break;
 		case ELeaderArchetype::Diplomat:      Behavior_Diplomat(Nation, RNG); break;
 		case ELeaderArchetype::Pragmatist:    Behavior_Pragmatist(Nation, RNG); break;
-		case ELeaderArchetype::Merchant:
+		case ELeaderArchetype::Merchant:      Behavior_Merchant(Nation, RNG); break;
 		case ELeaderArchetype::Religious:
 		case ELeaderArchetype::Intellectual:
-			// No-op placeholder. Comportamentos econômico/político/tech entram
-			// nas Etapas 2-3 do roadmap, quando os subsistemas relevantes existirem.
+			// No-op por enquanto. Politics/Progress destravam estes na Etapa 3.
 			break;
 	}
 }
@@ -274,4 +288,71 @@ void UAIPlaceholderSubsystem::Behavior_Pragmatist(UNation& Nation, FRandomStream
 		Military->IssueMoveOrder(Army->Id, Current->AdjacentProvinceIds[Idx]);
 		return;
 	}
+}
+
+// ============================================================================
+// Hooks econômicos.
+//
+// EconomyBehavior_Common: ações que toda nação não-jogador deve fazer
+// minimamente — manter um modifier "Pace" sensato no maior shortfall.
+// Behavior_Merchant: mais agressivo em modernização e tax baixa em comércio.
+
+void UAIPlaceholderSubsystem::EconomyBehavior_Common(UNation& Nation, FRandomStream& RNG)
+{
+	UEconomySubsystem* Economy = ResolveEconomy();
+	UWorldState* World = ResolveWorldState();
+	if (!Economy || !World) return;
+
+	// Se MilitaryReadiness está abaixo de 0.8, ativa "Push for Output" (id =
+	// "PushForOutput") em prédios de Tools / Iron das próprias províncias.
+	// É um nudge — depende de o asset existir no registry.
+	if (Nation.StrategicIndices.MilitaryReadinessIndex < 0.8f)
+	{
+		for (const FName& ProvId : Nation.OwnedProvinceIds)
+		{
+			UProvince* Prov = World->GetProvince(ProvId);
+			if (!Prov) continue;
+			for (TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+			{
+				UBuilding* B = BPtr.Get();
+				if (!B || !B->IsActive()) continue;
+				UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous();
+				if (!BT) continue;
+				const FString BTName = BT->Id.ToString();
+				if (BTName.Contains(TEXT("Tool")) || BTName.Contains(TEXT("Smelter")))
+				{
+					Economy->ToggleProductionModifier(B->Id, TEXT("PushForOutput"), true);
+				}
+			}
+		}
+	}
+}
+
+void UAIPlaceholderSubsystem::Behavior_Merchant(UNation& Nation, FRandomStream& RNG)
+{
+	UEconomySubsystem* Economy = ResolveEconomy();
+	if (!Economy) return;
+
+	// Merchant: ativa "ModernizationDrive" onde possível (precisa SteamPower —
+	// o EconomySubsystem checa internamente, falha silenciosa se sem tech),
+	// e baixa tax para Bourgeoisie e FactoryWorker, eleva para Laborer (modelo
+	// de exploração mercantilista historicamente comum).
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+		for (TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+		{
+			UBuilding* B = BPtr.Get();
+			if (!B || !B->IsActive()) continue;
+			Economy->ToggleProductionModifier(B->Id, TEXT("ModernizationDrive"), true);
+		}
+	}
+
+	Economy->SetTaxLevel(Nation.Id, EPopStratum::Bourgeoisie,   ETaxLevel::Low);
+	Economy->SetTaxLevel(Nation.Id, EPopStratum::FactoryWorker, ETaxLevel::Low);
+	Economy->SetTaxLevel(Nation.Id, EPopStratum::Laborer,       ETaxLevel::High);
 }
