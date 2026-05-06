@@ -125,6 +125,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Strategos|Economy|Player")
 	UBuilding* FindBuildingById(FName BuildingId) const;
 
+	// --- Ownership ------------------------------------------------------------
+
+	/** Vende um prédio Government para a Bourgeoisie da própria província. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Ownership")
+	EEconomyActionResult Privatize(FName BuildingId);
+
+	/** Compra um prédio Private de volta para o Estado (nationalization premium). */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Ownership")
+	EEconomyActionResult Nationalize(FName BuildingId);
+
+	/** Treasury banca a construção, mas o prédio sai com OwnerKind = Private. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Economy|Ownership")
+	EBuildResult SponsorPrivateIndustry(FName NationId, FName ProvinceId, FName BuildingTypeId);
+
+protected:
+	/** Loop de auto-investimento da Bourgeoisie. Roda no fim do month tick. */
+	void RunBourgeoisieAutoInvestment(UNation& Nation, const FDateTime& CurrentDate);
+
+	float ComputeProfitabilityScore(const UNation& Nation, const UProvince& Province,
+		const UBuildingTypeAsset& BT, const UProductionMethodAsset& PM) const;
+
+public:
+
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Economy")
 	FOnEconomyTickComplete OnEconomyTickComplete;
 

@@ -223,6 +223,8 @@ void UEconomySubsystem::RunMonthlyTickForNation(UNation& Nation, const FDateTime
 	Phase_PayExpenses(Nation);
 	Phase_SettleTreasury(Nation);
 	Phase_ComputeStrategicIndices(Nation);
+
+	RunBourgeoisieAutoInvestment(Nation, CurrentDate);
 }
 
 void UEconomySubsystem::TickConstruction(UProvince& Province)
@@ -1034,4 +1036,228 @@ void UEconomySubsystem::SetTaxLevel(FName NationId, EPopStratum Stratum, ETaxLev
 	UNation* Nation = World->GetNation(NationId);
 	if (!Nation) return;
 	Nation->Treasury.TaxLevelByStratum.FindOrAdd(Stratum) = NewLevel;
+}
+
+// ============================================================================
+// Ownership.
+// ============================================================================
+
+EEconomyActionResult UEconomySubsystem::Privatize(FName BuildingId)
+{
+	UBuilding* B = FindBuildingById(BuildingId);
+	if (!B) return EEconomyActionResult::NotFound;
+	if (B->OwnerKind != EBuildingOwnerKind::Government) return EEconomyActionResult::Invalid;
+	if (B->IsUnderConstruction()) return EEconomyActionResult::Invalid;
+
+	UWorldState* World = ResolveWorldState();
+	if (!World) return EEconomyActionResult::NotFound;
+	UProvince* Prov = World->GetProvince(B->ProvinceId);
+	if (!Prov) return EEconomyActionResult::NotFound;
+	UNation* Nation = World->GetNation(Prov->OwnerNationId);
+	if (!Nation) return EEconomyActionResult::NotFound;
+
+	UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous();
+	if (!BT) return EEconomyActionResult::Invalid;
+
+	// Treasury recebe 0.7× custo × Level; Bourgeoisie absorve a propriedade.
+	const float SalePrice = BT->ConstructionMonetaryCost * static_cast<float>(B->Level) * 0.7f;
+	Nation->Treasury.Balance += SalePrice;
+
+	if (FPopGroup* Bourg = Prov->Pops.Find(EPopStratum::Bourgeoisie))
+	{
+		Bourg->Wealth = FMath::Max(0.f, Bourg->Wealth - SalePrice);
+	}
+
+	B->OwnerKind = EBuildingOwnerKind::Private;
+	B->OwnerProvinceId = Prov->Id;
+
+	UE_LOG(LogStrategosCore, Log, TEXT("Privatized %s for %.1f"), *BuildingId.ToString(), SalePrice);
+	return EEconomyActionResult::Ok;
+}
+
+EEconomyActionResult UEconomySubsystem::Nationalize(FName BuildingId)
+{
+	UBuilding* B = FindBuildingById(BuildingId);
+	if (!B) return EEconomyActionResult::NotFound;
+	if (B->OwnerKind != EBuildingOwnerKind::Private) return EEconomyActionResult::Invalid;
+	if (B->IsUnderConstruction()) return EEconomyActionResult::Invalid;
+
+	UWorldState* World = ResolveWorldState();
+	if (!World) return EEconomyActionResult::NotFound;
+	UProvince* Prov = World->GetProvince(B->ProvinceId);
+	if (!Prov) return EEconomyActionResult::NotFound;
+	UNation* Nation = World->GetNation(Prov->OwnerNationId);
+	if (!Nation) return EEconomyActionResult::NotFound;
+	UBuildingTypeAsset* BT = B->BuildingType.LoadSynchronous();
+	if (!BT) return EEconomyActionResult::Invalid;
+
+	// Premium de 1.2× custo × Level.
+	const float Compensation = BT->ConstructionMonetaryCost * static_cast<float>(B->Level) * 1.2f;
+	if (Nation->Treasury.Balance < Compensation)
+	{
+		return EEconomyActionResult::NotPermitted;
+	}
+
+	Nation->Treasury.Balance -= Compensation;
+
+	if (UProvince* OwnerProv = World->GetProvince(B->OwnerProvinceId))
+	{
+		if (FPopGroup* Bourg = OwnerProv->Pops.Find(EPopStratum::Bourgeoisie))
+		{
+			Bourg->Wealth += Compensation;
+			// Pequeno hit de loyalty pela intervenção.
+			Bourg->Loyalty = FMath::Clamp(Bourg->Loyalty - 0.05f, 0.f, 1.f);
+		}
+	}
+
+	B->OwnerKind = EBuildingOwnerKind::Government;
+	B->OwnerProvinceId = NAME_None;
+
+	UE_LOG(LogStrategosCore, Log, TEXT("Nationalized %s for %.1f"), *BuildingId.ToString(), Compensation);
+	return EEconomyActionResult::Ok;
+}
+
+EBuildResult UEconomySubsystem::SponsorPrivateIndustry(FName NationId, FName ProvinceId, FName BuildingTypeId)
+{
+	// Treasury banca, mas o prédio sai como Private — atalho conveniente.
+	return BuildBuilding(NationId, ProvinceId, BuildingTypeId, EBuildingOwnerKind::Private);
+}
+
+// ============================================================================
+// Bourgeoisie auto-investment.
+// ============================================================================
+
+float UEconomySubsystem::ComputeProfitabilityScore(const UNation& Nation, const UProvince& Province,
+	const UBuildingTypeAsset& BT, const UProductionMethodAsset& PM) const
+{
+	float Revenue = 0.f;
+	for (const FGoodAmount& Out : PM.OutputsPerSlot)
+	{
+		const float Price = GetDynamicPrice(&Nation, Out.GoodId);
+		float RawMult = 1.0f;
+		if (PM.bRequiresRawResource)
+		{
+			const float* P = Province.RawResourcePotential.Find(PM.RawResourceGoodId);
+			RawMult = P ? *P : 0.f;
+		}
+		Revenue += Out.Amount * Price * RawMult;
+	}
+
+	float InputCost = 0.f;
+	for (const FGoodAmount& In : PM.InputsPerSlot)
+	{
+		InputCost += In.Amount * GetDynamicPrice(&Nation, In.GoodId);
+	}
+
+	float Wages = 0.f;
+	for (const FStratumEmployment& Emp : PM.EmploymentPerSlot)
+	{
+		Wages += static_cast<float>(Emp.Headcount) * Emp.WagePerWorker;
+	}
+
+	const float Maintenance = PM.MaintenancePerSlot;
+
+	return Revenue - InputCost - Wages - Maintenance;
+}
+
+void UEconomySubsystem::RunBourgeoisieAutoInvestment(UNation& Nation, const FDateTime& CurrentDate)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	// Determinístico: seed por nação + ano + mês.
+	const uint32 H = HashCombine(GetTypeHash(Nation.Id),
+		HashCombine(static_cast<uint32>(CurrentDate.GetYear()),
+		            static_cast<uint32>(CurrentDate.GetMonth())));
+	FRandomStream Rng(static_cast<int32>(H));
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+		if (Prov->GetFreeBuildingSlots() <= 0) continue;
+
+		FPopGroup* Bourg = Prov->Pops.Find(EPopStratum::Bourgeoisie);
+		if (!Bourg || Bourg->Population <= 0) continue;
+
+		// Threshold de capital mínimo escala com tamanho da Bourgeoisie.
+		const float MinWealth = 200.f;
+		if (Bourg->Wealth < MinWealth) continue;
+
+		// Ranqueia tipos de prédio por ProfitabilityScore × DemandSignal.
+		FName BestBT = NAME_None;
+		float BestScore = -KINDA_SMALL_NUMBER;
+
+		for (const auto& Pair : BuildingTypeById)
+		{
+			UBuildingTypeAsset* BT = Pair.Value.Get();
+			if (!BT) continue;
+			if (BT->bRequiresRawResource)
+			{
+				const float* P = Prov->RawResourcePotential.Find(BT->RequiredResourceId);
+				if (!P || *P <= 0.f) continue;
+			}
+
+			UProductionMethodAsset* PM = BT->DefaultMethod.LoadSynchronous();
+			if (!PM) continue;
+
+			const float Score = ComputeProfitabilityScore(Nation, *Prov, *BT, *PM);
+			if (Score > BestScore)
+			{
+				BestScore = Score;
+				BestBT = BT->Id;
+			}
+		}
+
+		if (BestBT.IsNone() || BestScore <= 0.f) continue;
+
+		UBuildingTypeAsset* PickedBT = GetBuildingType(BestBT);
+		if (!PickedBT) continue;
+
+		// Capital necessário: monetário + valor estimado dos goods de construção.
+		float GoodsValue = 0.f;
+		for (const FGoodAmount& Cost : PickedBT->ConstructionCost)
+		{
+			GoodsValue += Cost.Amount * GetDynamicPrice(&Nation, Cost.GoodId);
+		}
+		const float TotalNeeded = PickedBT->ConstructionMonetaryCost + GoodsValue;
+
+		if (Bourg->Wealth < TotalNeeded) continue;
+
+		// Verifica se a nação tem os goods em stock — Bourgeoisie "compra" do
+		// stockpile pagando o equivalente em wealth para o Treasury.
+		bool bHasGoods = true;
+		for (const FGoodAmount& Cost : PickedBT->ConstructionCost)
+		{
+			if (Nation.Stockpile.GetStock(Cost.GoodId) < Cost.Amount) { bHasGoods = false; break; }
+		}
+		if (!bHasGoods) continue;
+
+		// Transação.
+		Bourg->Wealth -= TotalNeeded;
+		Nation.Treasury.Balance += GoodsValue; // a nação fornece os goods e recebe pagamento
+		for (const FGoodAmount& Cost : PickedBT->ConstructionCost)
+		{
+			Nation.Stockpile.TryConsume(Cost.GoodId, Cost.Amount);
+		}
+
+		UBuilding* B = NewObject<UBuilding>(Prov);
+		B->Id = FName(*FString::Printf(TEXT("%s.%s.priv.%d"),
+			*ProvId.ToString(), *BestBT.ToString(), Prov->Buildings.Num()));
+		B->BuildingType = PickedBT;
+		B->ProvinceId = ProvId;
+		B->Level = 1;
+		B->OwnerKind = EBuildingOwnerKind::Private;
+		B->OwnerProvinceId = ProvId;
+		B->CurrentProductionMethod = PickedBT->DefaultMethod;
+		B->ConstructionDaysRemaining = PickedBT->ConstructionDays;
+		Prov->Buildings.Add(B);
+
+		UE_LOG(LogStrategosCore, Log,
+			TEXT("Bourgeoisie of %s invested in %s (score=%.1f, wealth left=%.1f)"),
+			*ProvId.ToString(), *BestBT.ToString(), BestScore, Bourg->Wealth);
+
+		// Apenas 1 investimento por mês por província — evita explosão.
+		(void)Rng; // seed reservada para tie-break em iterações futuras
+	}
 }
