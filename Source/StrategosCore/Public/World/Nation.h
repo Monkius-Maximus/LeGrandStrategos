@@ -2,11 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "World/LeaderArchetype.h"
 #include "Nation.generated.h"
 
+class ULeader;
+
 /**
- * UNation — entidade política. No MVP detém id, nome, cor e províncias.
- * Economia, política interna, diplomacia, IA chegam nas etapas seguintes.
+ * UNation — entidade política. No MVP detém id, nome, cor, províncias,
+ * o líder atual e suas NationalIdeas (que inclinam a sucessão).
+ *
+ * Economia, política interna, diplomacia detalhada chegam nas etapas
+ * seguintes do roadmap.
  */
 UCLASS(BlueprintType)
 class STRATEGOSCORE_API UNation : public UObject
@@ -31,4 +37,19 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation")
 	bool bIsPlayerControlled = false;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Nation|Leadership")
+	TObjectPtr<ULeader> CurrentLeader;
+
+	/** Tags como "Martial", "Mercantile", "Diplomatic" — pesam a sucessão de líderes. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Leadership")
+	TArray<FName> NationalIdeas;
+
+	/**
+	 * Afinidade base de cada arquétipo. As NationalIdeas somam bônus a esse mapa
+	 * via UNationalIdeaRegistry; o resultado é a distribuição de probabilidade
+	 * usada pelo UAIPlaceholderSubsystem na sucessão.
+	 */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Leadership")
+	TMap<ELeaderArchetype, float> ArchetypeAffinity;
 };
