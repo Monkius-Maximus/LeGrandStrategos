@@ -5,6 +5,11 @@
 #include "World/Nation.h"
 #include "World/Province.h"
 #include "World/Army.h"
+#include "Economy/Building.h"
+#include "Economy/BuildingTypeAsset.h"
+#include "Economy/ProductionMethodAsset.h"
+#include "Economy/ProductionModifierAsset.h"
+#include "Economy/EconomySubsystem.h"
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Game/StrategosGameState.h"
 #include "Engine/World.h"
@@ -73,6 +78,9 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		R.CapitalProvinceId = Nation->CapitalProvinceId;
 		R.OwnedProvinceIds = Nation->OwnedProvinceIds;
 		R.bIsPlayerControlled = Nation->bIsPlayerControlled;
+		R.Treasury = Nation->Treasury;
+		R.StockpileStocks = Nation->Stockpile.Stocks;
+		R.StrategicIndices = Nation->StrategicIndices;
 		Snapshot->Nations.Add(R);
 	}
 
@@ -88,6 +96,41 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		R.AdjacentProvinceIds = Province->AdjacentProvinceIds;
 		R.MapPosition = Province->MapPosition;
 		R.Terrain = Province->Terrain;
+		R.BuildingSlots = Province->BuildingSlots;
+		R.RawResourcePotential = Province->RawResourcePotential;
+
+		R.Pops.Reserve(Province->Pops.Num());
+		for (const auto& PopPair : Province->Pops)
+		{
+			FPopRecord PR;
+			PR.Stratum = PopPair.Value.Stratum;
+			PR.Population = PopPair.Value.Population;
+			PR.Wealth = PopPair.Value.Wealth;
+			PR.Loyalty = PopPair.Value.Loyalty;
+			R.Pops.Add(PR);
+		}
+
+		R.Buildings.Reserve(Province->Buildings.Num());
+		for (const TObjectPtr<UBuilding>& BPtr : Province->Buildings)
+		{
+			const UBuilding* B = BPtr.Get();
+			if (!B) continue;
+			FBuildingRecord BR;
+			BR.Id = B->Id;
+			BR.ProvinceId = B->ProvinceId;
+			BR.BuildingTypeAssetPath = FName(*B->BuildingType.ToSoftObjectPath().ToString());
+			BR.CurrentMethodAssetPath = FName(*B->CurrentProductionMethod.ToSoftObjectPath().ToString());
+			BR.Level = B->Level;
+			BR.OwnerKind = B->OwnerKind;
+			BR.OwnerProvinceId = B->OwnerProvinceId;
+			BR.ConstructionDaysRemaining = B->ConstructionDaysRemaining;
+			for (const TSoftObjectPtr<UProductionModifierAsset>& Mod : B->ActiveProductionModifiers)
+			{
+				BR.ActiveModifierAssetPaths.Add(FName(*Mod.ToSoftObjectPath().ToString()));
+			}
+			R.Buildings.Add(BR);
+		}
+
 		Snapshot->Provinces.Add(R);
 	}
 
@@ -123,6 +166,12 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 	WorldState->Armies.Empty();
 	WorldState->PlayerNationId = Snapshot.PlayerNationId;
 
+	UEconomySubsystem* Economy = nullptr;
+	if (const UWorld* GameWorld = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr)
+	{
+		Economy = GameWorld->GetSubsystem<UEconomySubsystem>();
+	}
+
 	for (const FProvinceRecord& R : Snapshot.Provinces)
 	{
 		UProvince* P = WorldState->AddProvince(R.Id);
@@ -131,6 +180,39 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 		P->AdjacentProvinceIds = R.AdjacentProvinceIds;
 		P->MapPosition = R.MapPosition;
 		P->Terrain = R.Terrain;
+		P->BuildingSlots = R.BuildingSlots;
+		P->RawResourcePotential = R.RawResourcePotential;
+
+		P->Pops.Empty();
+		for (const FPopRecord& PR : R.Pops)
+		{
+			FPopGroup G;
+			G.Stratum = PR.Stratum;
+			G.Population = PR.Population;
+			G.Wealth = PR.Wealth;
+			G.Loyalty = PR.Loyalty;
+			P->Pops.Add(PR.Stratum, G);
+		}
+
+		P->Buildings.Empty();
+		for (const FBuildingRecord& BR : R.Buildings)
+		{
+			UBuilding* B = NewObject<UBuilding>(P);
+			B->Id = BR.Id;
+			B->ProvinceId = BR.ProvinceId;
+			B->BuildingType = TSoftObjectPtr<UBuildingTypeAsset>(FSoftObjectPath(BR.BuildingTypeAssetPath.ToString()));
+			B->CurrentProductionMethod = TSoftObjectPtr<UProductionMethodAsset>(FSoftObjectPath(BR.CurrentMethodAssetPath.ToString()));
+			B->Level = BR.Level;
+			B->OwnerKind = BR.OwnerKind;
+			B->OwnerProvinceId = BR.OwnerProvinceId;
+			B->ConstructionDaysRemaining = BR.ConstructionDaysRemaining;
+			for (const FName& ModPath : BR.ActiveModifierAssetPaths)
+			{
+				B->ActiveProductionModifiers.Add(
+					TSoftObjectPtr<UProductionModifierAsset>(FSoftObjectPath(ModPath.ToString())));
+			}
+			P->Buildings.Add(B);
+		}
 	}
 
 	for (const FNationRecord& R : Snapshot.Nations)
@@ -141,7 +223,12 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 		N->CapitalProvinceId = R.CapitalProvinceId;
 		N->OwnedProvinceIds = R.OwnedProvinceIds;
 		N->bIsPlayerControlled = R.bIsPlayerControlled;
+		N->Treasury = R.Treasury;
+		N->Stockpile.Stocks = R.StockpileStocks;
+		N->StrategicIndices = R.StrategicIndices;
 	}
+
+	(void)Economy;
 
 	for (const FArmyRecord& R : Snapshot.Armies)
 	{
