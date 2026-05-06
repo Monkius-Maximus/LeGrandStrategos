@@ -225,10 +225,228 @@ void UEconomySubsystem::TickConstruction(UProvince& Province)
 	}
 }
 
-// Stubs das fases — implementadas nos commits 6-8.
-void UEconomySubsystem::Phase_PopGrowth(UNation& Nation) {}
-void UEconomySubsystem::Phase_AssignEmployment(UNation& Nation) {}
-void UEconomySubsystem::Phase_RunProduction(UNation& Nation) {}
+// ----------------------------------------------------------------------------
+// Helpers internos.
+
+namespace
+{
+	struct FAggregatedModifiers
+	{
+		float Throughput = 1.f;
+		float Input = 1.f;
+		float Wage = 1.f;
+		float Maintenance = 1.f;
+		float MonthlyLoyaltyDelta = 0.f;
+	};
+
+	FAggregatedModifiers ComputeModifiers(const UBuilding& Building)
+	{
+		FAggregatedModifiers Acc;
+		for (const TSoftObjectPtr<UProductionModifierAsset>& Soft : Building.ActiveProductionModifiers)
+		{
+			const UProductionModifierAsset* Mod = Soft.LoadSynchronous();
+			if (!Mod) continue;
+			Acc.Throughput          *= Mod->ThroughputMultiplier;
+			Acc.Input               *= Mod->InputCostMultiplier;
+			Acc.Wage                *= Mod->WageMultiplier;
+			Acc.Maintenance         *= Mod->MaintenanceMultiplier;
+			Acc.MonthlyLoyaltyDelta += Mod->MonthlyLoyaltyDelta;
+		}
+		return Acc;
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 1: PopGrowth (placeholder — crescimento natural lento, sem migração).
+
+void UEconomySubsystem::Phase_PopGrowth(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	// 0.1% ao mês (~1.2% ao ano), aplicado igualmente nos estratos ativos.
+	constexpr float MonthlyGrowthRate = 0.001f;
+
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+		for (auto& Pair : Prov->Pops)
+		{
+			FPopGroup& G = Pair.Value;
+			const int32 Growth = FMath::FloorToInt(G.Population * MonthlyGrowthRate);
+			G.Population += Growth;
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 2: AssignEmployment.
+//
+// Para cada prédio ativo, percorre EmploymentPerSlot e aloca POPs do estrato
+// correspondente. Ordem de iteração estável (Province.Buildings na ordem que
+// foram inseridos) garante determinismo. Buildings posteriores no mesmo
+// município podem ficar com menos labor — comportamento esperado.
+
+void UEconomySubsystem::Phase_AssignEmployment(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	// Reset.
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+		for (auto& Pair : Prov->Pops)
+		{
+			Pair.Value.EmployedThisMonth = 0;
+		}
+	}
+
+	// Aloca.
+	for (const FName& ProvId : Nation.OwnedProvinceIds)
+	{
+		UProvince* Prov = World->GetProvince(ProvId);
+		if (!Prov) continue;
+
+		for (TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+		{
+			UBuilding* B = BPtr.Get();
+			if (!B || !B->IsActive()) continue;
+
+			UProductionMethodAsset* PM = B->CurrentProductionMethod.LoadSynchronous();
+			if (!PM) continue;
+
+			B->LastTickEmployment.Empty();
+			for (const FStratumEmployment& Need : PM->EmploymentPerSlot)
+			{
+				const int32 Required = Need.Headcount * B->Level;
+				FPopGroup* Pop = Prov->Pops.Find(Need.Stratum);
+				const int32 Available = Pop
+					? FMath::Max(0, Pop->Population - Pop->EmployedThisMonth)
+					: 0;
+				const int32 Effective = FMath::Min(Required, Available);
+				if (Pop)
+				{
+					Pop->EmployedThisMonth += Effective;
+				}
+				B->LastTickEmployment.Add(Need.Stratum, Effective);
+			}
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fase 3: RunProduction (em ordem estrita de tier 0 -> 3).
+//
+// Para cada prédio ativo:
+//   1. Computa EmploymentRatio (effective / required).
+//   2. DesiredScale = Level × EmpRatio × RawPotential × ThroughputMult.
+//   3. Verifica disponibilidade de inputs no Stockpile; reduz scale se preciso.
+//   4. Consome inputs, produz outputs, registra Demand/Supply para preço
+//      dinâmico e índices estratégicos.
+
+void UEconomySubsystem::Phase_RunProduction(UNation& Nation)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	for (int32 Tier = 0; Tier <= 3; ++Tier)
+	{
+		for (const FName& ProvId : Nation.OwnedProvinceIds)
+		{
+			UProvince* Prov = World->GetProvince(ProvId);
+			if (!Prov) continue;
+
+			for (TObjectPtr<UBuilding>& BPtr : Prov->Buildings)
+			{
+				UBuilding* B = BPtr.Get();
+				if (!B || !B->IsActive()) continue;
+
+				UProductionMethodAsset* PM = B->CurrentProductionMethod.LoadSynchronous();
+				if (!PM || PM->ProductionTier != Tier) continue;
+
+				const FAggregatedModifiers Mods = ComputeModifiers(*B);
+
+				// Employment ratio agregado.
+				int32 RequiredTotal = 0;
+				int32 EffectiveTotal = 0;
+				for (const FStratumEmployment& Need : PM->EmploymentPerSlot)
+				{
+					RequiredTotal += Need.Headcount * B->Level;
+					if (const int32* E = B->LastTickEmployment.Find(Need.Stratum))
+					{
+						EffectiveTotal += *E;
+					}
+				}
+				const float EmpRatio = RequiredTotal > 0
+					? static_cast<float>(EffectiveTotal) / static_cast<float>(RequiredTotal)
+					: 1.0f;
+
+				// Raw resource potential (mines/farms).
+				float RawMult = 1.0f;
+				if (PM->bRequiresRawResource)
+				{
+					const float* P = Prov->RawResourcePotential.Find(PM->RawResourceGoodId);
+					RawMult = P ? FMath::Max(0.f, *P) : 0.f;
+				}
+
+				const float DesiredScale = static_cast<float>(B->Level) * EmpRatio * RawMult * Mods.Throughput;
+
+				// Clear caches do tick anterior.
+				B->LastTickInputs.Empty();
+				B->LastTickOutputs.Empty();
+
+				if (DesiredScale <= KINDA_SMALL_NUMBER)
+				{
+					continue;
+				}
+
+				// Demand registrada e gargalo de inputs.
+				float RealizedScale = DesiredScale;
+				for (const FGoodAmount& In : PM->InputsPerSlot)
+				{
+					if (In.Amount <= 0.f) continue;
+					const float Desired = In.Amount * DesiredScale * Mods.Input;
+					Nation.Stockpile.RecordDemand(In.GoodId, Desired);
+					const float Available = Nation.Stockpile.GetStock(In.GoodId);
+					if (Available < Desired)
+					{
+						const float MaxAllowed = (In.Amount * Mods.Input) > KINDA_SMALL_NUMBER
+							? Available / (In.Amount * Mods.Input)
+							: 0.f;
+						RealizedScale = FMath::Min(RealizedScale, MaxAllowed);
+					}
+				}
+				RealizedScale = FMath::Max(0.f, RealizedScale);
+
+				// Consome inputs (pelo realizado).
+				for (const FGoodAmount& In : PM->InputsPerSlot)
+				{
+					if (In.Amount <= 0.f) continue;
+					const float Used = In.Amount * RealizedScale * Mods.Input;
+					Nation.Stockpile.ConsumeUpTo(In.GoodId, Used);
+					B->LastTickInputs.Add(In.GoodId, Used);
+				}
+
+				// Produz outputs.
+				for (const FGoodAmount& Out : PM->OutputsPerSlot)
+				{
+					if (Out.Amount <= 0.f) continue;
+					const float Produced = Out.Amount * RealizedScale;
+					Nation.Stockpile.AddStock(Out.GoodId, Produced);
+					Nation.Stockpile.RecordSupply(Out.GoodId, Produced);
+					B->LastTickOutputs.Add(Out.GoodId, Produced);
+				}
+			}
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Fases 4-9: stubs — implementadas nos commits 7-8.
+
 void UEconomySubsystem::Phase_PopConsumption(UNation& Nation) {}
 void UEconomySubsystem::Phase_PaywagesAndProfits(UNation& Nation) {}
 void UEconomySubsystem::Phase_CollectTaxes(UNation& Nation) {}
