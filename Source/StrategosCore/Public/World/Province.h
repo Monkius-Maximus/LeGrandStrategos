@@ -6,6 +6,8 @@
 #include "Economy/PopGroup.h"
 #include "Province.generated.h"
 
+class UBuilding;
+
 /**
  * UProvince — célula territorial mínima do mapa.
  *
@@ -53,9 +55,25 @@ public:
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Province|Economy")
 	TMap<FName, float> RawResourcePotential;
 
+	/** Prédios (incluindo em construção). Vivem aqui mas operam sob a UNation dona. */
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Province|Economy")
+	TArray<TObjectPtr<UBuilding>> Buildings;
+
 	UFUNCTION(BlueprintPure, Category = "Province")
 	bool IsAdjacentTo(FName OtherProvinceId) const
 	{
 		return AdjacentProvinceIds.Contains(OtherProvinceId);
+	}
+
+	UFUNCTION(BlueprintPure, Category = "Province|Economy")
+	int32 GetUsedBuildingSlots() const
+	{
+		return Buildings.Num();
+	}
+
+	UFUNCTION(BlueprintPure, Category = "Province|Economy")
+	int32 GetFreeBuildingSlots() const
+	{
+		return FMath::Max(0, BuildingSlots - Buildings.Num());
 	}
 };
