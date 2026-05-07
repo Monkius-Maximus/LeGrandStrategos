@@ -4,6 +4,8 @@
 #include "Events/EventCondition.h"
 #include "Events/EventEffect.h"
 #include "Events/EventChoice.h"
+#include "Events/Conditions/EventConditions.h"
+#include "Events/Effects/EventEffects.h"
 #include "World/WorldState.h"
 #include "World/Nation.h"
 #include "World/Province.h"
@@ -160,7 +162,138 @@ void UEventSubsystem::RebuildIndex()
 
 void UEventSubsystem::RegisterFallbackEvents()
 {
-	// Implementação real no commit 7. Por enquanto vazio.
+	FallbackEvents.Empty();
+
+	auto MakeEffect_AddGold = [this](float Amount)
+	{
+		UEffect_AddGold* E = NewObject<UEffect_AddGold>(this);
+		E->Amount = Amount;
+		return E;
+	};
+	auto MakeEffect_AddLoyalty = [this](EPopStratum S, float Delta, bool bAll = false)
+	{
+		UEffect_AddPopLoyalty* E = NewObject<UEffect_AddPopLoyalty>(this);
+		E->Stratum = S;
+		E->Delta = Delta;
+		E->bAllStrata = bAll;
+		return E;
+	};
+	auto MakeEffect_AddGoods = [this](TArray<FGoodAmount> Items)
+	{
+		UEffect_AddGoodsToStockpile* E = NewObject<UEffect_AddGoodsToStockpile>(this);
+		E->Goods = MoveTemp(Items);
+		return E;
+	};
+
+	// 1. Bountiful Harvest — Notification anual, MTTH 6
+	{
+		UEventAsset* E = NewObject<UEventAsset>(this);
+		E->Id = TEXT("BountifulHarvest");
+		E->Title = NSLOCTEXT("Strategos", "BountifulHarvest_T", "Bountiful Harvest");
+		E->Description = NSLOCTEXT("Strategos", "BountifulHarvest_D",
+			"Favorable weather brings an exceptional harvest. Granaries swell.");
+		E->Type = EEventType::Notification;
+		E->TriggerTag = TEXT("Time.Year");
+		E->MeanTimeToHappenMonths = 6;
+		E->AutoEffects.Add(MakeEffect_AddGoods({ { TEXT("Grain"), 200.f }, { TEXT("Bread"), 100.f } }));
+		E->AutoEffects.Add(MakeEffect_AddLoyalty(EPopStratum::Laborer, 0.05f, false));
+		FallbackEvents.Add(E);
+	}
+
+	// 2. Worker Strike — Notification mensal, gated por LoyaltyBelow(FactoryWorker, 0.6)
+	{
+		UEventAsset* E = NewObject<UEventAsset>(this);
+		E->Id = TEXT("WorkerStrike");
+		E->Title = NSLOCTEXT("Strategos", "WorkerStrike_T", "Worker Strike");
+		E->Description = NSLOCTEXT("Strategos", "WorkerStrike_D",
+			"Factory workers down their tools, demanding better conditions.");
+		E->Type = EEventType::Notification;
+		E->TriggerTag = TEXT("Time.Month");
+		E->MeanTimeToHappenMonths = 4;
+		UCondition_LoyaltyBelow* C = NewObject<UCondition_LoyaltyBelow>(this);
+		C->Stratum = EPopStratum::FactoryWorker;
+		C->Threshold = 0.6f;
+		E->Conditions.Add(C);
+		E->AutoEffects.Add(MakeEffect_AddLoyalty(EPopStratum::FactoryWorker, -0.05f, false));
+		E->AutoEffects.Add(MakeEffect_AddGold(-50.f));
+		FallbackEvents.Add(E);
+	}
+
+	// 3. Foreign Investor — Decision mensal, gated por TreasuryBelow(<10000) + Bourgeoisie loyalty
+	{
+		UEventAsset* E = NewObject<UEventAsset>(this);
+		E->Id = TEXT("ForeignInvestor");
+		E->Title = NSLOCTEXT("Strategos", "ForeignInvestor_T", "Foreign Investor Approaches");
+		E->Description = NSLOCTEXT("Strategos", "ForeignInvestor_D",
+			"A wealthy foreigner offers capital in exchange for trade concessions.");
+		E->Type = EEventType::Decision;
+		E->TriggerTag = TEXT("Time.Month");
+		E->MeanTimeToHappenMonths = 24;
+
+		FEventChoice Accept;
+		Accept.Label = NSLOCTEXT("Strategos", "FI_Accept", "Accept the offer (+500g, -loyalty Bourgeoisie)");
+		Accept.Effects.Add(MakeEffect_AddGold(500.f));
+		Accept.Effects.Add(MakeEffect_AddLoyalty(EPopStratum::Bourgeoisie, -0.10f, false));
+		E->Choices.Add(Accept);
+
+		FEventChoice Refuse;
+		Refuse.Label = NSLOCTEXT("Strategos", "FI_Refuse", "Refuse (preserve sovereignty)");
+		Refuse.Effects.Add(MakeEffect_AddLoyalty(EPopStratum::Bourgeoisie, 0.02f, false));
+		E->Choices.Add(Refuse);
+
+		FallbackEvents.Add(E);
+	}
+
+	// 4. Festival Petition — Decision mensal, gated por HasGoodInStockpile(Bread, 500)
+	{
+		UEventAsset* E = NewObject<UEventAsset>(this);
+		E->Id = TEXT("FestivalPetition");
+		E->Title = NSLOCTEXT("Strategos", "FP_T", "Festival Petition");
+		E->Description = NSLOCTEXT("Strategos", "FP_D",
+			"With granaries full, citizens petition for a public festival.");
+		E->Type = EEventType::Decision;
+		E->TriggerTag = TEXT("Time.Month");
+		E->MeanTimeToHappenMonths = 12;
+
+		UCondition_HasGoodInStockpile* C = NewObject<UCondition_HasGoodInStockpile>(this);
+		C->GoodId = TEXT("Bread");
+		C->MinAmount = 500.f;
+		E->Conditions.Add(C);
+
+		FEventChoice Hold;
+		Hold.Label = NSLOCTEXT("Strategos", "FP_Hold", "Hold the festival (-100g, +loyalty all)");
+		Hold.Effects.Add(MakeEffect_AddGold(-100.f));
+		Hold.Effects.Add(MakeEffect_AddGoods({ { TEXT("Bread"), -100.f } }));
+		Hold.Effects.Add(MakeEffect_AddLoyalty(EPopStratum::Laborer, 0.05f, true));
+		E->Choices.Add(Hold);
+
+		FEventChoice Skip;
+		Skip.Label = NSLOCTEXT("Strategos", "FP_Skip", "Skip (no effect)");
+		E->Choices.Add(Skip);
+
+		FallbackEvents.Add(E);
+	}
+
+	// 5. Bandit Raid — Notification mensal raro
+	{
+		UEventAsset* E = NewObject<UEventAsset>(this);
+		E->Id = TEXT("BanditRaid");
+		E->Title = NSLOCTEXT("Strategos", "BR_T", "Bandit Raid");
+		E->Description = NSLOCTEXT("Strategos", "BR_D",
+			"Brigands raid a remote province, looting what they can carry.");
+		E->Type = EEventType::Notification;
+		E->TriggerTag = TEXT("Time.Month");
+		E->MeanTimeToHappenMonths = 18;
+		E->AutoEffects.Add(MakeEffect_AddGold(-30.f));
+		E->AutoEffects.Add(MakeEffect_AddGoods({
+			{ TEXT("Grain"), -20.f },
+			{ TEXT("Iron"), -5.f }
+		}));
+		FallbackEvents.Add(E);
+	}
+
+	UE_LOG(LogStrategosCore, Log, TEXT("EventSubsystem: registered %d fallback events."),
+		FallbackEvents.Num());
 }
 
 UEventAsset* UEventSubsystem::GetEventById(FName EventId) const
