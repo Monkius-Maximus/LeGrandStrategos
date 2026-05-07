@@ -1,0 +1,37 @@
+# Unreal Engine generated folders
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+Script/
+
+# Visual Studio / Rider / VS Code project files
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.xcodeproj
+*.xcworkspace
+*.VC.db
+*.opensdf
+*.sdf
+*.opendb
+
+# Editor / OS junk
+*.swp
+*.user
+.DS_Store
+Thumbs.db
+
+# Generated UE files
+*.target
+*.modules
+
+# Crash reports
+*CrashReportClient*
+
+# Plugin compiled binaries (keep sources)
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
