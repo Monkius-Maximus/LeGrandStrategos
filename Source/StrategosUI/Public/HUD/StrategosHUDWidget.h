@@ -3,12 +3,14 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Foundation/Time/TimeSpeed.h"
+#include "Events/EventContext.h"
 #include "StrategosHUDWidget.generated.h"
 
 class UTimeSubsystem;
 class UMapSubsystem;
 class USaveSubsystem;
 class UEconomySubsystem;
+class UEventSubsystem;
 class UNation;
 
 USTRUCT(BlueprintType)
@@ -33,6 +35,17 @@ struct STRATEGOSUI_API FBuildingHUDRow
 	UPROPERTY(BlueprintReadOnly) int32 ConstructionDaysRemaining = 0;
 	UPROPERTY(BlueprintReadOnly) float LastTickProfit = 0.f;
 	UPROPERTY(BlueprintReadOnly) bool bIsPrivate = false;
+};
+
+USTRUCT(BlueprintType)
+struct STRATEGOSUI_API FPendingDecisionHUDRow
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly) FName EventId;
+	UPROPERTY(BlueprintReadOnly) FText Title;
+	UPROPERTY(BlueprintReadOnly) FText Description;
+	UPROPERTY(BlueprintReadOnly) TArray<FText> ChoiceLabels;
+	UPROPERTY(BlueprintReadOnly) TArray<FText> ChoiceTooltips;
 };
 
 /**
@@ -119,6 +132,32 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Economy")
 	TArray<FBuildingHUDRow> GetPlayerBuildings() const;
 
+	// --- Eventos -----------------------------------------------------------
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Events")
+	bool HasPendingDecisions() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Events")
+	int32 GetPendingDecisionCount() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Events")
+	bool GetTopPendingDecision(FPendingDecisionHUDRow& OutDecision) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Strategos|HUD|Events")
+	TArray<FPendingDecisionHUDRow> GetAllPendingDecisions() const;
+
+	/** Resolve a decisão dada com a escolha indicada. Retorna true se OK. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|HUD|Events")
+	bool ResolvePendingDecision(FName EventId, int32 ChoiceIndex);
+
+	/** BP override para reagir quando um evento Notification dispara. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Strategos|HUD|Events")
+	void OnNotificationFired(const FName& EventId, const FText& Title, const FText& Description);
+
+	/** BP override para reagir quando uma decisão entra na fila. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Strategos|HUD|Events")
+	void OnDecisionEnqueued(const FName& EventId);
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -131,9 +170,16 @@ private:
 	UFUNCTION()
 	void HandleProvinceSelected(FName ProvinceId);
 
+	UFUNCTION()
+	void HandleEventFired(const FEventContext& Context);
+
+	UFUNCTION()
+	void HandleDecisionEnqueued(const FEventContext& Context);
+
 	UTimeSubsystem* ResolveTime() const;
 	UMapSubsystem* ResolveMap() const;
 	USaveSubsystem* ResolveSave() const;
 	UEconomySubsystem* ResolveEconomy() const;
+	UEventSubsystem* ResolveEvents() const;
 	UNation* ResolvePlayerNation() const;
 };

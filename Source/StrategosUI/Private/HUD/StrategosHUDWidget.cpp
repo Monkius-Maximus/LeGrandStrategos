@@ -6,6 +6,8 @@
 #include "Economy/EconomySubsystem.h"
 #include "Economy/Building.h"
 #include "Economy/BuildingTypeAsset.h"
+#include "Events/EventSubsystem.h"
+#include "Events/EventAsset.h"
 #include "World/WorldState.h"
 #include "World/Province.h"
 #include "World/Nation.h"
@@ -21,6 +23,11 @@ void UStrategosHUDWidget::NativeConstruct()
 	{
 		Map->OnProvinceSelected.AddDynamic(this, &UStrategosHUDWidget::HandleProvinceSelected);
 	}
+	if (UEventSubsystem* Events = ResolveEvents())
+	{
+		Events->OnEventFired.AddDynamic(this, &UStrategosHUDWidget::HandleEventFired);
+		Events->OnDecisionEnqueued.AddDynamic(this, &UStrategosHUDWidget::HandleDecisionEnqueued);
+	}
 }
 
 void UStrategosHUDWidget::NativeDestruct()
@@ -29,7 +36,18 @@ void UStrategosHUDWidget::NativeDestruct()
 	{
 		Map->OnProvinceSelected.RemoveDynamic(this, &UStrategosHUDWidget::HandleProvinceSelected);
 	}
+	if (UEventSubsystem* Events = ResolveEvents())
+	{
+		Events->OnEventFired.RemoveDynamic(this, &UStrategosHUDWidget::HandleEventFired);
+		Events->OnDecisionEnqueued.RemoveDynamic(this, &UStrategosHUDWidget::HandleDecisionEnqueued);
+	}
 	Super::NativeDestruct();
+}
+
+UEventSubsystem* UStrategosHUDWidget::ResolveEvents() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetSubsystem<UEventSubsystem>() : nullptr;
 }
 
 UTimeSubsystem* UStrategosHUDWidget::ResolveTime() const
@@ -303,4 +321,103 @@ TArray<FBuildingHUDRow> UStrategosHUDWidget::GetPlayerBuildings() const
 		}
 	}
 	return Out;
+}
+
+// ============================================================================
+// Eventos.
+
+bool UStrategosHUDWidget::HasPendingDecisions() const
+{
+	const UEventSubsystem* Events = ResolveEvents();
+	return Events && Events->HasPendingDecisions(NAME_None);
+}
+
+int32 UStrategosHUDWidget::GetPendingDecisionCount() const
+{
+	const UEventSubsystem* Events = ResolveEvents();
+	if (!Events) return 0;
+	return Events->GetPendingDecisions(NAME_None).Num();
+}
+
+bool UStrategosHUDWidget::GetTopPendingDecision(FPendingDecisionHUDRow& OutDecision) const
+{
+	const UEventSubsystem* Events = ResolveEvents();
+	if (!Events) return false;
+	const TArray<FPendingDecision> Pending = Events->GetPendingDecisions(NAME_None);
+	if (Pending.Num() == 0) return false;
+
+	const FEventContext& Ctx = Pending[0].Context;
+	UEventAsset* Asset = Events->GetEventById(Ctx.EventId);
+	if (!Asset) return false;
+
+	OutDecision.EventId = Asset->Id;
+	OutDecision.Title = Asset->Title;
+	OutDecision.Description = Asset->Description;
+	for (const FEventChoice& C : Asset->Choices)
+	{
+		OutDecision.ChoiceLabels.Add(C.Label);
+		OutDecision.ChoiceTooltips.Add(C.Tooltip);
+	}
+	return true;
+}
+
+TArray<FPendingDecisionHUDRow> UStrategosHUDWidget::GetAllPendingDecisions() const
+{
+	TArray<FPendingDecisionHUDRow> Out;
+	const UEventSubsystem* Events = ResolveEvents();
+	if (!Events) return Out;
+
+	for (const FPendingDecision& P : Events->GetPendingDecisions(NAME_None))
+	{
+		UEventAsset* Asset = Events->GetEventById(P.Context.EventId);
+		if (!Asset) continue;
+
+		FPendingDecisionHUDRow R;
+		R.EventId = Asset->Id;
+		R.Title = Asset->Title;
+		R.Description = Asset->Description;
+		for (const FEventChoice& C : Asset->Choices)
+		{
+			R.ChoiceLabels.Add(C.Label);
+			R.ChoiceTooltips.Add(C.Tooltip);
+		}
+		Out.Add(R);
+	}
+	return Out;
+}
+
+bool UStrategosHUDWidget::ResolvePendingDecision(FName EventId, int32 ChoiceIndex)
+{
+	UEventSubsystem* Events = ResolveEvents();
+	if (!Events) return false;
+
+	const UNation* Nation = ResolvePlayerNation();
+	if (!Nation) return false;
+
+	const EDecisionResolveResult R = Events->ResolveDecision(Nation->Id, EventId, ChoiceIndex);
+	return R == EDecisionResolveResult::Ok;
+}
+
+void UStrategosHUDWidget::HandleEventFired(const FEventContext& Context)
+{
+	const UNation* Player = ResolvePlayerNation();
+	if (!Player || Context.SourceNationId != Player->Id) return;
+
+	const UEventSubsystem* Events = ResolveEvents();
+	if (!Events) return;
+
+	if (UEventAsset* Asset = Events->GetEventById(Context.EventId))
+	{
+		if (Asset->Type == EEventType::Notification)
+		{
+			OnNotificationFired(Asset->Id, Asset->Title, Asset->Description);
+		}
+	}
+}
+
+void UStrategosHUDWidget::HandleDecisionEnqueued(const FEventContext& Context)
+{
+	const UNation* Player = ResolvePlayerNation();
+	if (!Player || Context.SourceNationId != Player->Id) return;
+	OnDecisionEnqueued(Context.EventId);
 }
