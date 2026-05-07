@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Events/EventContext.h"
+#include "Events/EventChoice.h"
 #include "EventSubsystem.generated.h"
 
 class UEventAsset;
@@ -14,6 +15,23 @@ class UEconomySubsystem;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEventFired, const FEventContext&, Context);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDecisionEnqueued, const FEventContext&, Context);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDecisionResolved, const FEventContext&, Context, int32, ChoiceIndex);
+
+UENUM(BlueprintType)
+enum class EDecisionResolveResult : uint8
+{
+	Ok					UMETA(DisplayName = "Ok"),
+	NoSuchDecision		UMETA(DisplayName = "No such pending decision"),
+	InvalidChoice		UMETA(DisplayName = "Invalid choice index")
+};
+
+USTRUCT(BlueprintType)
+struct STRATEGOSCORE_API FPendingDecision
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FEventContext Context;
+};
 
 /**
  * UEventSubsystem — Roteador central de eventos narrativos.
@@ -52,11 +70,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
 	void FireEventById(FName EventId, const FEventContext& Context);
 
+	// --- Decision queue ----------------------------------------------------
+
+	/** Pending decisions da nação dada (vazio = nação do player). */
+	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
+	TArray<FPendingDecision> GetPendingDecisions(FName NationId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
+	bool HasPendingDecisions(FName NationId) const;
+
+	/** Resolve uma decisão aplicando os effects da choice. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
+	EDecisionResolveResult ResolveDecision(FName NationId, FName EventId, int32 ChoiceIndex);
+
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Events")
 	FOnEventFired OnEventFired;
 
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Events")
 	FOnDecisionEnqueued OnDecisionEnqueued;
+
+	UPROPERTY(BlueprintAssignable, Category = "Strategos|Events")
+	FOnDecisionResolved OnDecisionResolved;
 
 protected:
 	UFUNCTION()
@@ -81,6 +115,12 @@ protected:
 	bool RollMTTH(FName EventId, const FEventContext& Context, int32 MTTHMonths) const;
 
 	void ApplyAutoEffects(const UEventAsset& Event, const FEventContext& Context);
+
+	void ApplyChoiceEffects(const FEventChoice& Choice, const FEventContext& Context);
+
+	void EnqueueOrAutoResolve(UEventAsset& Event, const FEventContext& Context);
+
+	int32 PickAIChoice(const UEventAsset& Event, const FEventContext& Context) const;
 
 private:
 	void RebuildIndex();
@@ -107,4 +147,8 @@ private:
 	/** Indexação primária: TriggerTag → TArray<EventAsset*>. */
 	UPROPERTY()
 	TMap<FName, TArray<TObjectPtr<UEventAsset>>> EventsByTrigger;
+
+	/** Pending decisions por nação. Ordem: FIFO. */
+	UPROPERTY()
+	TMap<FName, TArray<FPendingDecision>> PendingByNation;
 };

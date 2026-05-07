@@ -1,4 +1,5 @@
 #include "Events/Effects/EventEffects.h"
+#include "Events/EventSubsystem.h"
 #include "World/WorldState.h"
 #include "World/Nation.h"
 #include "World/Province.h"
@@ -61,8 +62,21 @@ void UEffect_AddGoodsToStockpile::Apply_Implementation(UWorldState* WorldState, 
 
 void UEffect_FireEvent::Apply_Implementation(UWorldState* WorldState, const FEventContext& Context)
 {
-	// Wired no commit que adiciona UEventSubsystem.FireEventById (commit 6).
-	// Stub seguro: registra log para detectar configuração premature.
-	UE_LOG(LogTemp, Verbose, TEXT("Effect_FireEvent stub for '%s' (target=%s)"),
-		*EventId.ToString(), *TargetNationId.ToString());
+	if (EventId.IsNone()) return;
+
+	UWorld* World = nullptr;
+	if (UObject* Outer = GetOuter())
+	{
+		World = Outer->GetWorld();
+	}
+	if (!World) return;
+
+	UEventSubsystem* Events = World->GetSubsystem<UEventSubsystem>();
+	if (!Events) return;
+
+	FEventContext NewCtx = Context;
+	NewCtx.EventId = EventId;
+	NewCtx.SourceNationId = TargetNationId.IsNone() ? Context.SourceNationId : TargetNationId;
+	NewCtx.TriggerTag = TEXT("Chain");
+	Events->FireEventById(EventId, NewCtx);
 }

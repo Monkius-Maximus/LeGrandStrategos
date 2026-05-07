@@ -174,7 +174,6 @@ void UEventSubsystem::FireEventById(FName EventId, const FEventContext& Context)
 	UEventAsset* E = GetEventById(EventId);
 	if (!E) return;
 
-	UWorldState* World = ResolveWorldState();
 	FEventContext Ctx = Context;
 	Ctx.EventId = E->Id;
 
@@ -182,14 +181,125 @@ void UEventSubsystem::FireEventById(FName EventId, const FEventContext& Context)
 
 	if (E->Type == EEventType::Decision)
 	{
-		// Decision queueing implementado no commit 6.
-		OnDecisionEnqueued.Broadcast(Ctx);
+		EnqueueOrAutoResolve(*E, Ctx);
 	}
 	else
 	{
 		ApplyAutoEffects(*E, Ctx);
 		OnEventFired.Broadcast(Ctx);
 	}
+}
+
+// ----------------------------------------------------------------------------
+// Decision queue + resolve.
+
+namespace
+{
+	FName ResolveQueryNation(FName NationId, const UWorldState* World)
+	{
+		if (!NationId.IsNone()) return NationId;
+		return World ? World->PlayerNationId : NAME_None;
+	}
+}
+
+TArray<FPendingDecision> UEventSubsystem::GetPendingDecisions(FName NationId) const
+{
+	const FName Target = ResolveQueryNation(NationId, ResolveWorldState());
+	if (const TArray<FPendingDecision>* P = PendingByNation.Find(Target))
+	{
+		return *P;
+	}
+	return {};
+}
+
+bool UEventSubsystem::HasPendingDecisions(FName NationId) const
+{
+	const FName Target = ResolveQueryNation(NationId, ResolveWorldState());
+	const TArray<FPendingDecision>* P = PendingByNation.Find(Target);
+	return P && P->Num() > 0;
+}
+
+EDecisionResolveResult UEventSubsystem::ResolveDecision(FName NationId, FName EventId, int32 ChoiceIndex)
+{
+	TArray<FPendingDecision>* Pending = PendingByNation.Find(NationId);
+	if (!Pending) return EDecisionResolveResult::NoSuchDecision;
+
+	const int32 Idx = Pending->IndexOfByPredicate([&](const FPendingDecision& P)
+	{
+		return P.Context.EventId == EventId;
+	});
+	if (Idx == INDEX_NONE) return EDecisionResolveResult::NoSuchDecision;
+
+	UEventAsset* Event = GetEventById(EventId);
+	if (!Event) return EDecisionResolveResult::NoSuchDecision;
+
+	if (!Event->Choices.IsValidIndex(ChoiceIndex))
+	{
+		return EDecisionResolveResult::InvalidChoice;
+	}
+
+	const FEventContext Ctx = (*Pending)[Idx].Context;
+	Pending->RemoveAt(Idx);
+
+	ApplyChoiceEffects(Event->Choices[ChoiceIndex], Ctx);
+	OnDecisionResolved.Broadcast(Ctx, ChoiceIndex);
+
+	UE_LOG(LogStrategosCore, Log, TEXT("Decision %s resolved by %s with choice %d"),
+		*EventId.ToString(), *NationId.ToString(), ChoiceIndex);
+	return EDecisionResolveResult::Ok;
+}
+
+void UEventSubsystem::ApplyChoiceEffects(const FEventChoice& Choice, const FEventContext& Context)
+{
+	UWorldState* World = ResolveWorldState();
+	for (const TObjectPtr<UEventEffect>& EffPtr : Choice.Effects)
+	{
+		if (UEventEffect* Eff = EffPtr.Get())
+		{
+			Eff->Apply(World, Context);
+		}
+	}
+}
+
+void UEventSubsystem::EnqueueOrAutoResolve(UEventAsset& Event, const FEventContext& Context)
+{
+	UWorldState* World = ResolveWorldState();
+	if (!World) return;
+
+	UNation* Nation = World->GetNation(Context.SourceNationId);
+	const bool bIsPlayer = Nation && Nation->bIsPlayerControlled;
+
+	if (Event.Choices.Num() == 0)
+	{
+		// Decision sem choices é mal-formada; trata como Notification.
+		ApplyAutoEffects(Event, Context);
+		OnEventFired.Broadcast(Context);
+		return;
+	}
+
+	if (bIsPlayer)
+	{
+		FPendingDecision P;
+		P.Context = Context;
+		PendingByNation.FindOrAdd(Context.SourceNationId).Add(P);
+		OnDecisionEnqueued.Broadcast(Context);
+		UE_LOG(LogStrategosCore, Verbose, TEXT("Decision %s queued for player nation %s"),
+			*Event.Id.ToString(), *Context.SourceNationId.ToString());
+	}
+	else
+	{
+		const int32 Pick = PickAIChoice(Event, Context);
+		ApplyChoiceEffects(Event.Choices[Pick], Context);
+		OnDecisionResolved.Broadcast(Context, Pick);
+	}
+}
+
+int32 UEventSubsystem::PickAIChoice(const UEventAsset& Event, const FEventContext& Context) const
+{
+	// Determinístico: hash de (NationId, EventId, Date) modulo NumChoices.
+	const uint32 H1 = GetTypeHash(Context.SourceNationId);
+	const uint32 H2 = HashCombine(GetTypeHash(Event.Id), static_cast<uint32>(Context.FireDate.GetTicks()));
+	return static_cast<int32>(HashCombine(H1, H2)) % FMath::Max(1, Event.Choices.Num());
 }
 
 bool UEventSubsystem::EvaluateConditions(const UEventAsset& Event, const FEventContext& Context) const
@@ -248,7 +358,7 @@ void UEventSubsystem::DispatchTrigger(FName TriggerTag, const FEventContext& Bas
 
 		if (E->Type == EEventType::Decision)
 		{
-			OnDecisionEnqueued.Broadcast(Ctx);
+			EnqueueOrAutoResolve(*E, Ctx);
 		}
 		else
 		{
