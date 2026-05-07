@@ -7,6 +7,7 @@
 #include "Economy/Treasury.h"
 #include "Economy/BuildingOwnerKind.h"
 #include "Economy/StrategicIndices.h"
+#include "Events/EventContext.h"
 #include "StrategosSaveData.generated.h"
 
 USTRUCT()
@@ -94,16 +95,25 @@ struct FArmyRecord
  * jogo entrar em alpha pública. Por agora, abrir um save antigo em código
  * novo apenas inicializa os campos novos com defaults.
  */
+USTRUCT()
+struct FPendingDecisionRecord
+{
+	GENERATED_BODY()
+	UPROPERTY() FName NationId;
+	UPROPERTY() FEventContext Context;
+};
+
 UCLASS()
 class STRATEGOSCORE_API UStrategosSaveData : public USaveGame
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY() int32 SaveVersion = 2;
+	UPROPERTY() int32 SaveVersion = 3;
 	UPROPERTY() FDateTime CurrentDate;
 	UPROPERTY() FName PlayerNationId;
 	UPROPERTY() TArray<FNationRecord> Nations;
 	UPROPERTY() TArray<FProvinceRecord> Provinces;
 	UPROPERTY() TArray<FArmyRecord> Armies;
+	UPROPERTY() TArray<FPendingDecisionRecord> PendingDecisions;
 };

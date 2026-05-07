@@ -92,6 +92,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Events")
 	FOnDecisionResolved OnDecisionResolved;
 
+	// --- Save/Load support -------------------------------------------------
+
+	/** Snapshot da fila de decisões pendentes (serialização). */
+	const TMap<FName, TArray<FPendingDecision>>& GetPendingDecisionsRaw() const { return PendingByNation; }
+
+	/** Restaura a fila a partir de records carregados. Substitui estado atual. */
+	void RestorePendingDecisions(const TMap<FName, TArray<FPendingDecision>>& Pending);
+
 protected:
 	UFUNCTION()
 	void HandleMonthTick(FDateTime CurrentDate);

@@ -435,6 +435,11 @@ int32 UEventSubsystem::PickAIChoice(const UEventAsset& Event, const FEventContex
 	return static_cast<int32>(HashCombine(H1, H2)) % FMath::Max(1, Event.Choices.Num());
 }
 
+void UEventSubsystem::RestorePendingDecisions(const TMap<FName, TArray<FPendingDecision>>& Pending)
+{
+	PendingByNation = Pending;
+}
+
 bool UEventSubsystem::EvaluateConditions(const UEventAsset& Event, const FEventContext& Context) const
 {
 	UWorldState* World = ResolveWorldState();

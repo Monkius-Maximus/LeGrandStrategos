@@ -10,6 +10,7 @@
 #include "Economy/ProductionMethodAsset.h"
 #include "Economy/ProductionModifierAsset.h"
 #include "Economy/EconomySubsystem.h"
+#include "Events/EventSubsystem.h"
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Game/StrategosGameState.h"
 #include "Engine/World.h"
@@ -150,6 +151,24 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		Snapshot->Armies.Add(R);
 	}
 
+	// Pending decisions.
+	if (const UWorld* GameWorld = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr)
+	{
+		if (UEventSubsystem* Events = GameWorld->GetSubsystem<UEventSubsystem>())
+		{
+			for (const auto& Pair : Events->GetPendingDecisionsRaw())
+			{
+				for (const FPendingDecision& P : Pair.Value)
+				{
+					FPendingDecisionRecord R;
+					R.NationId = Pair.Key;
+					R.Context = P.Context;
+					Snapshot->PendingDecisions.Add(R);
+				}
+			}
+		}
+	}
+
 	return Snapshot;
 }
 
@@ -245,6 +264,22 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 	{
 		const FDateTime& D = Snapshot.CurrentDate;
 		Time->SetStartDate(D.GetYear(), D.GetMonth(), D.GetDay());
+	}
+
+	// Pending decisions.
+	if (const UWorld* GameWorld = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr)
+	{
+		if (UEventSubsystem* Events = GameWorld->GetSubsystem<UEventSubsystem>())
+		{
+			TMap<FName, TArray<FPendingDecision>> Restored;
+			for (const FPendingDecisionRecord& R : Snapshot.PendingDecisions)
+			{
+				FPendingDecision P;
+				P.Context = R.Context;
+				Restored.FindOrAdd(R.NationId).Add(P);
+			}
+			Events->RestorePendingDecisions(Restored);
+		}
 	}
 
 	return true;
