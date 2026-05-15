@@ -9,6 +9,7 @@
 #include "Nation.generated.h"
 
 class ULeader;
+class UTexture2D;
 
 /**
  * UNation — entidade política. No MVP detém id, nome, cor, províncias,
@@ -31,6 +32,18 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation")
 	FLinearColor Color = FLinearColor::White;
+
+	/** Cor de trim/detalhe — usada em gradientes e ornamentos da UI. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation")
+	FLinearColor SecondaryColor = FLinearColor::Gray;
+
+	/** Bandeira nacional. Arte 256×192 (proporção 4:3 real). */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Identity")
+	TSoftObjectPtr<UTexture2D> FlagTexture;
+
+	/** Brasão circular. Arte 128×128. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation|Identity")
+	TSoftObjectPtr<UTexture2D> CoatOfArmsIcon;
 
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Nation")
 	FName CapitalProvinceId;

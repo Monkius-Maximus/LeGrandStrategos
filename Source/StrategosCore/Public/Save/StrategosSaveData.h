@@ -8,6 +8,7 @@
 #include "Economy/BuildingOwnerKind.h"
 #include "Economy/StrategicIndices.h"
 #include "Events/EventContext.h"
+#include "World/ArmyStats.h"
 #include "StrategosSaveData.generated.h"
 
 USTRUCT()
@@ -50,6 +51,11 @@ struct FNationRecord
 	UPROPERTY() FTreasury Treasury;
 	UPROPERTY() TMap<FName, float> StockpileStocks;
 	UPROPERTY() FStrategicIndices StrategicIndices;
+
+	// Etapa 2 (UI grid v4): identidade visual.
+	UPROPERTY() FLinearColor SecondaryColor = FLinearColor::Gray;
+	UPROPERTY() FName FlagTexturePath;
+	UPROPERTY() FName CoatOfArmsIconPath;
 };
 
 USTRUCT()
@@ -81,19 +87,32 @@ struct FArmyRecord
 	UPROPERTY() FName MoveTargetProvinceId;
 	UPROPERTY() int32 MoveDaysRemaining = 0;
 	UPROPERTY() int32 ManpowerCount = 0;
+
+	// Etapa 2 (UI grid v4): tipo, stats, modificadores, experiência, estado.
+	UPROPERTY() FName UnitTypeAssetPath;
+	UPROPERTY() FArmyStats BaseStats;
+	UPROPERTY() TArray<FArmyModifier> ActiveModifiers;
+	UPROPERTY() EUnitState State = EUnitState::Ready;
+	UPROPERTY() int32 ExperienceXP = 0;
+	UPROPERTY() int32 ExperienceLevel = 0;
 };
 
 /**
  * UStrategosSaveData — snapshot serializável do estado do mundo.
  *
- * SaveVersion = 2 (Etapa 2 v1):
- *  - Adiciona economy state em FNationRecord (Treasury + Stockpile + Indices)
- *  - Adiciona POPs e Buildings em FProvinceRecord
- *  - DataAssets (UBuildingTypeAsset etc) são referenciados por path/Id
+ * SaveVersion = 4 (Etapa 2 UI grid):
+ *  - FNationRecord: SecondaryColor + FlagTexturePath + CoatOfArmsIconPath
+ *  - FArmyRecord: UnitTypeAssetPath + BaseStats + ActiveModifiers + State + XP/Level
+ *  - DataAssets (UUnitTypeAsset etc) são referenciados por path/Id
  *
- * Versionamento real (com migração de SaveVersion 1 → 2) virá quando o
- * jogo entrar em alpha pública. Por agora, abrir um save antigo em código
- * novo apenas inicializa os campos novos com defaults.
+ * Versões anteriores:
+ *  - 3: economia (Treasury, Stockpile, POPs, Buildings) + pending decisions de Events
+ *  - 2: POPs e Buildings em FProvinceRecord
+ *  - 1: base (Nations, Provinces, Armies sem economia/eventos)
+ *
+ * Versionamento real (com migração 3 → 4 etc) virá quando o jogo entrar em alpha
+ * pública. Por agora, abrir um save antigo em código novo inicializa campos novos
+ * com defaults.
  */
 USTRUCT()
 struct FPendingDecisionRecord
@@ -109,7 +128,7 @@ class STRATEGOSCORE_API UStrategosSaveData : public USaveGame
 	GENERATED_BODY()
 
 public:
-	UPROPERTY() int32 SaveVersion = 3;
+	UPROPERTY() int32 SaveVersion = 4;
 	UPROPERTY() FDateTime CurrentDate;
 	UPROPERTY() FName PlayerNationId;
 	UPROPERTY() TArray<FNationRecord> Nations;

@@ -5,6 +5,7 @@
 #include "World/Nation.h"
 #include "World/Province.h"
 #include "World/Army.h"
+#include "World/UnitTypeAsset.h"
 #include "Economy/Building.h"
 #include "Economy/BuildingTypeAsset.h"
 #include "Economy/ProductionMethodAsset.h"
@@ -82,6 +83,9 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		R.Treasury = Nation->Treasury;
 		R.StockpileStocks = Nation->Stockpile.Stocks;
 		R.StrategicIndices = Nation->StrategicIndices;
+		R.SecondaryColor = Nation->SecondaryColor;
+		R.FlagTexturePath = FName(*Nation->FlagTexture.ToSoftObjectPath().ToString());
+		R.CoatOfArmsIconPath = FName(*Nation->CoatOfArmsIcon.ToSoftObjectPath().ToString());
 		Snapshot->Nations.Add(R);
 	}
 
@@ -148,6 +152,12 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		R.MoveTargetProvinceId = Army->MoveTargetProvinceId;
 		R.MoveDaysRemaining = Army->MoveDaysRemaining;
 		R.ManpowerCount = Army->ManpowerCount;
+		R.UnitTypeAssetPath = FName(*Army->UnitType.ToSoftObjectPath().ToString());
+		R.BaseStats = Army->BaseStats;
+		R.ActiveModifiers = Army->ActiveModifiers;
+		R.State = Army->State;
+		R.ExperienceXP = Army->ExperienceXP;
+		R.ExperienceLevel = Army->ExperienceLevel;
 		Snapshot->Armies.Add(R);
 	}
 
@@ -245,6 +255,15 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 		N->Treasury = R.Treasury;
 		N->Stockpile.Stocks = R.StockpileStocks;
 		N->StrategicIndices = R.StrategicIndices;
+		N->SecondaryColor = R.SecondaryColor;
+		if (!R.FlagTexturePath.IsNone())
+		{
+			N->FlagTexture = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(R.FlagTexturePath.ToString()));
+		}
+		if (!R.CoatOfArmsIconPath.IsNone())
+		{
+			N->CoatOfArmsIcon = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(R.CoatOfArmsIconPath.ToString()));
+		}
 	}
 
 	(void)Economy;
@@ -258,6 +277,15 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 		A->MoveTargetProvinceId = R.MoveTargetProvinceId;
 		A->MoveDaysRemaining = R.MoveDaysRemaining;
 		A->ManpowerCount = R.ManpowerCount;
+		if (!R.UnitTypeAssetPath.IsNone())
+		{
+			A->UnitType = TSoftObjectPtr<UUnitTypeAsset>(FSoftObjectPath(R.UnitTypeAssetPath.ToString()));
+		}
+		A->BaseStats = R.BaseStats;
+		A->ActiveModifiers = R.ActiveModifiers;
+		A->State = R.State;
+		A->ExperienceXP = R.ExperienceXP;
+		A->ExperienceLevel = R.ExperienceLevel;
 	}
 
 	if (UTimeSubsystem* Time = GetGameInstance()->GetSubsystem<UTimeSubsystem>())
