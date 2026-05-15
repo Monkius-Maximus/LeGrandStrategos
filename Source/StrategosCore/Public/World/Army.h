@@ -2,14 +2,18 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "World/ArmyStats.h"
 #include "Army.generated.h"
+
+class UUnitTypeAsset;
 
 /**
  * UArmy — unidade estratégica que ocupa províncias e se move entre elas.
  *
- * Stage 1 (MVP): dono, província atual, ordem de movimento (target +
- * dias restantes) e contagem de soldados. Composição detalhada (regimentos,
- * comandantes, equipamento) entra na Etapa 3 junto com o sistema de unidades.
+ * MVP de Etapa 1: dono, província, ordem de movimento, contagem de soldados.
+ * Etapa 2 (cartas): + UnitType, BaseStats, ActiveModifiers, EUnitState, XP/Level.
+ * Loadout customizável (Armament/Equipment/Doctrine/...) entra com o painel
+ * de customização pós-MVP, junto com BattleResolver.
  */
 UCLASS(BlueprintType)
 class STRATEGOSCORE_API UArmy : public UObject
@@ -37,6 +41,26 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Army")
 	int32 ManpowerCount = 1000;
+
+	/** Template estático desta unidade. Carta UI lê daqui (nome, portrait, traços). */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Army|Type")
+	TSoftObjectPtr<UUnitTypeAsset> UnitType;
+
+	/** Stats efetivas. Inicializadas a partir de UnitType.BaseStats; modificadas em runtime. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Army|Stats")
+	FArmyStats BaseStats;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Army|Stats")
+	TArray<FArmyModifier> ActiveModifiers;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Army|Stats")
+	EUnitState State = EUnitState::Ready;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Army|Experience")
+	int32 ExperienceXP = 0;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "Army|Experience")
+	int32 ExperienceLevel = 0;
 
 	UFUNCTION(BlueprintPure, Category = "Army")
 	bool IsMoving() const { return !MoveTargetProvinceId.IsNone() && MoveDaysRemaining > 0; }
