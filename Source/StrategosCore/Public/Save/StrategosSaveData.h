@@ -9,6 +9,7 @@
 #include "Economy/StrategicIndices.h"
 #include "Events/EventContext.h"
 #include "World/ArmyStats.h"
+#include "Diplomacy/DiplomaticRelation.h"
 #include "StrategosSaveData.generated.h"
 
 USTRUCT()
@@ -100,17 +101,16 @@ struct FArmyRecord
 /**
  * UStrategosSaveData — snapshot serializável do estado do mundo.
  *
- * SaveVersion = 4 (Etapa 2 UI grid):
- *  - FNationRecord: SecondaryColor + FlagTexturePath + CoatOfArmsIconPath
- *  - FArmyRecord: UnitTypeAssetPath + BaseStats + ActiveModifiers + State + XP/Level
- *  - DataAssets (UUnitTypeAsset etc) são referenciados por path/Id
+ * SaveVersion = 5 (Etapa 2 Diplomacy v1):
+ *  - DiplomaticRelations: matriz esparsa N×N de FDiplomaticRelation
  *
  * Versões anteriores:
- *  - 3: economia (Treasury, Stockpile, POPs, Buildings) + pending decisions de Events
- *  - 2: POPs e Buildings em FProvinceRecord
- *  - 1: base (Nations, Provinces, Armies sem economia/eventos)
+ *  - 4: identidade visual de Nation + expansão de Army (stats, modifiers, state, XP)
+ *  - 3: pending decisions de Events
+ *  - 2: economia (Treasury, Stockpile, POPs, Buildings)
+ *  - 1: base (Nations, Provinces, Armies)
  *
- * Versionamento real (com migração 3 → 4 etc) virá quando o jogo entrar em alpha
+ * Versionamento real (com migração 4 → 5 etc) virá quando o jogo entrar em alpha
  * pública. Por agora, abrir um save antigo em código novo inicializa campos novos
  * com defaults.
  */
@@ -128,11 +128,12 @@ class STRATEGOSCORE_API UStrategosSaveData : public USaveGame
 	GENERATED_BODY()
 
 public:
-	UPROPERTY() int32 SaveVersion = 4;
+	UPROPERTY() int32 SaveVersion = 5;
 	UPROPERTY() FDateTime CurrentDate;
 	UPROPERTY() FName PlayerNationId;
 	UPROPERTY() TArray<FNationRecord> Nations;
 	UPROPERTY() TArray<FProvinceRecord> Provinces;
 	UPROPERTY() TArray<FArmyRecord> Armies;
 	UPROPERTY() TArray<FPendingDecisionRecord> PendingDecisions;
+	UPROPERTY() TArray<FDiplomaticRelation> DiplomaticRelations;
 };

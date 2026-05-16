@@ -12,6 +12,7 @@
 #include "Economy/ProductionModifierAsset.h"
 #include "Economy/EconomySubsystem.h"
 #include "Events/EventSubsystem.h"
+#include "Diplomacy/DiplomacySubsystem.h"
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Game/StrategosGameState.h"
 #include "Engine/World.h"
@@ -177,6 +178,15 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 				}
 			}
 		}
+
+		// Diplomatic relations.
+		if (const UDiplomacySubsystem* Diplomacy = GameWorld->GetSubsystem<UDiplomacySubsystem>())
+		{
+			for (const auto& Pair : Diplomacy->GetRelationsRaw())
+			{
+				Snapshot->DiplomaticRelations.Add(Pair.Value);
+			}
+		}
 	}
 
 	return Snapshot;
@@ -307,6 +317,11 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 				Restored.FindOrAdd(R.NationId).Add(P);
 			}
 			Events->RestorePendingDecisions(Restored);
+		}
+
+		if (UDiplomacySubsystem* Diplomacy = GameWorld->GetSubsystem<UDiplomacySubsystem>())
+		{
+			Diplomacy->RestoreRelations(Snapshot.DiplomaticRelations);
 		}
 	}
 

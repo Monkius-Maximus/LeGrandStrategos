@@ -10,6 +10,8 @@
 #include "Economy/PopStratum.h"
 #include "Economy/TaxLevel.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
+#include "Diplomacy/DiplomacySubsystem.h"
 #include "StrategosCore.h"
 
 namespace
@@ -411,6 +413,17 @@ void UWorldBootstrapper::ApplyDefaultSandbox(UWorldState* WorldState)
 		A->OwnerNationId = SN.Id;
 		A->CurrentProvinceId = SN.Capital;
 		A->ManpowerCount = 1500;
+	}
+
+	// Relações diplomáticas iniciais (Diplomacy v1).
+	if (UWorld* GameWorld = WorldState->GetWorld())
+	{
+		if (UDiplomacySubsystem* Diplomacy = GameWorld->GetSubsystem<UDiplomacySubsystem>())
+		{
+			Diplomacy->SetRelation(TEXT("Albion"), TEXT("Galia"),  EDiplomaticStatus::NonAggressionPact, -40.f);
+			Diplomacy->SetRelation(TEXT("Albion"), TEXT("Norden"), EDiplomaticStatus::Peace,             25.f);
+			Diplomacy->SetRelation(TEXT("Galia"),  TEXT("Norden"), EDiplomaticStatus::Peace,            -10.f);
+		}
 	}
 
 	UE_LOG(LogStrategosCore, Log, TEXT("Default sandbox applied: %d nations, %d provinces, %d armies"),
