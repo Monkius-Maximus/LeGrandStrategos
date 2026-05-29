@@ -14,7 +14,8 @@ public class LeGrandStrategosEditorTarget : TargetRules
 			"StrategosData",
 			"StrategosBattle",
 			"StrategosAI",
-			"StrategosUI"
+			"StrategosUI",
+			"StrategosWorldGen"
 		});
 	}
 }
