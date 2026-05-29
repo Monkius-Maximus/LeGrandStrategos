@@ -19,6 +19,13 @@ public class StrategosWorldGen : ModuleRules
 			// (mesh procedural) entrar; o render de debug atual e Opcao A (textura).
 		});
 
+		// Export de PNG do mapa de debug (FImageUtils::SaveImageByExtension).
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+			"ImageCore",
+			"ImageWrapper"
+		});
+
 		// Header-only, MIT. Ver ThirdParty/delaunator-cpp/LICENSE.
 		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "ThirdParty", "delaunator-cpp"));
 	}

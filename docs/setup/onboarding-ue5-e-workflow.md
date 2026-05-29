@@ -122,12 +122,28 @@ etapa, na ordem da Seção 16 do documento de referência:
 
 Cada modo valida um estágio do pipeline visualmente.
 
-### 2.3 Atalho opcional (posso implementar se você quiser)
+### 2.3 Atalho recomendado: `AWorldGenDebugActor` (já implementado)
 
-Esse setup de UMG é trabalhoso para um primeiro contato. Posso criar um
-`AWorldGenDebugActor` em C++ que, no `BeginPlay`, gera o mundo e desenha a
-textura direto num plano/HUD — você só arrasta o actor pro nível e dá Play.
-**Me peça** que adiciono numa próxima sessão.
+Para evitar montar UMG no primeiro contato, existe o **`AWorldGenDebugActor`**.
+Fluxo de 1 clique:
+
+1. No *Content Browser* / *Place Actors*, procure por **WorldGenDebugActor** e
+   **arraste para o nível** (qualquer lugar).
+2. No painel **Details** do actor, ajuste **Params** (Seed, MapSize, Template,
+   SeaLevel...) e o **Mode**. Deixe `bExportAllModes = true` para sair um PNG de
+   cada estágio.
+3. Duas formas de rodar:
+   - **Sem PIE:** clique no botão **"Generate And Export"** no painel Details
+     (é `CallInEditor`).
+   - **Com PIE:** dê Play; ele gera no `BeginPlay`.
+4. Os PNGs aparecem em **`<Projeto>/Saved/WorldGen/`** (ex.:
+   `worldgen_seed1337_biomes.png`). O Output Log imprime o caminho absoluto.
+
+Abra a pasta, inspecione os PNGs e **anexe-os aqui** para eu validar/tunar o
+resultado. É o canal mais eficiente para iteração visual do worldgen.
+
+> O actor roda o pipeline direto (não depende de GameInstance), então funciona
+> tanto no botão do editor quanto em PIE.
 
 ---
 

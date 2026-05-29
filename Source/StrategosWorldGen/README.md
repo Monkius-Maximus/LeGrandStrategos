@@ -60,6 +60,13 @@ Para validar estágio a estágio (Seção 16 do documento), troque o
 `EWorldGenRenderMode`: `RandomCells` → `Height` → `Coast` → `Temperature`
 → `Precipitation` → `Biomes`.
 
+## Teste rápido sem código: `AWorldGenDebugActor`
+
+Arraste um **WorldGenDebugActor** para um nível, ajuste `Params`/`Mode` no
+painel Details e clique **"Generate And Export"** (botão `CallInEditor`, não
+precisa dar Play) ou dê Play. Os PNGs de debug saem em
+`<Projeto>/Saved/WorldGen/`. Com `bExportAllModes = true` sai um por estágio.
+
 ## Limitações conhecidas (escopo de estudo)
 
 - Voronoi: células de borda têm polígono aberto; marcadas `bIsBorder` e

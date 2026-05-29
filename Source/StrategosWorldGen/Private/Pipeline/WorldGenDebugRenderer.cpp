@@ -3,6 +3,8 @@
 #include "StrategosWorldGen.h"
 #include "Engine/Texture2D.h"
 #include "TextureResource.h"
+#include "ImageUtils.h"
+#include "ImageCore.h"
 
 namespace StrategosWorldGen::DebugRender
 {
@@ -96,14 +98,14 @@ namespace StrategosWorldGen::DebugRender
 		}
 	}
 
-	UTexture2D* RenderToTexture(const FWorldGenResult& Result, EWorldGenRenderMode Mode)
+	bool BuildPixels(const FWorldGenResult& Result, EWorldGenRenderMode Mode, TArray<FColor>& OutPixels)
 	{
 		const int32 W = Result.MapSize.X;
 		const int32 H = Result.MapSize.Y;
 		if (W <= 0 || H <= 0 || Result.Cells.Num() == 0)
 		{
-			UE_LOG(LogStrategosWorldGen, Error, TEXT("RenderToTexture: resultado vazio."));
-			return nullptr;
+			UE_LOG(LogStrategosWorldGen, Error, TEXT("BuildPixels: resultado vazio."));
+			return false;
 		}
 
 		// Pre-computa cor por celula.
@@ -114,9 +116,32 @@ namespace StrategosWorldGen::DebugRender
 			CellColors[i] = ColorForCell(Result.Cells[i], Mode, i, Result.SeaLevel);
 		}
 
-		// Hash espacial para o nearest-cell.
+		// Hash espacial para o nearest-cell (evita O(N) por pixel).
 		StrategosWorldGen::Math::FSpatialGrid Grid;
 		Grid.Build(Result.Cells, Result.MapSize, FMath::Max(8.0f, (float)W / 128.0f));
+
+		OutPixels.SetNumUninitialized(W * H);
+		for (int32 Y = 0; Y < H; ++Y)
+		{
+			for (int32 X = 0; X < W; ++X)
+			{
+				const int32 Cell = Grid.FindNearest(Result.Cells, FVector2D(X + 0.5f, Y + 0.5f));
+				OutPixels[Y * W + X] = CellColors.IsValidIndex(Cell) ? CellColors[Cell] : FColor::Magenta;
+			}
+		}
+		return true;
+	}
+
+	UTexture2D* RenderToTexture(const FWorldGenResult& Result, EWorldGenRenderMode Mode)
+	{
+		TArray<FColor> Pixels;
+		if (!BuildPixels(Result, Mode, Pixels))
+		{
+			return nullptr;
+		}
+
+		const int32 W = Result.MapSize.X;
+		const int32 H = Result.MapSize.Y;
 
 		UTexture2D* Tex = UTexture2D::CreateTransient(W, H, PF_B8G8R8A8);
 		if (!Tex)
@@ -132,18 +157,35 @@ namespace StrategosWorldGen::DebugRender
 			return nullptr;
 		}
 
-		FColor* Mip = static_cast<FColor*>(PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-		for (int32 Y = 0; Y < H; ++Y)
-		{
-			for (int32 X = 0; X < W; ++X)
-			{
-				const int32 Cell = Grid.FindNearest(Result.Cells, FVector2D(X + 0.5f, Y + 0.5f));
-				Mip[Y * W + X] = CellColors.IsValidIndex(Cell) ? CellColors[Cell] : FColor::Magenta;
-			}
-		}
+		void* Mip = PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
+		FMemory::Memcpy(Mip, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 		PlatformData->Mips[0].BulkData.Unlock();
 		Tex->UpdateResource();
 
 		return Tex;
+	}
+
+	bool SaveToPng(const FString& AbsolutePath, const FWorldGenResult& Result, EWorldGenRenderMode Mode)
+	{
+		TArray<FColor> Pixels;
+		if (!BuildPixels(Result, Mode, Pixels))
+		{
+			return false;
+		}
+
+		for (FColor& C : Pixels)
+		{
+			C.A = 255; // mapa de debug e opaco
+		}
+
+		const FImageView Image(Pixels.GetData(), Result.MapSize.X, Result.MapSize.Y, ERawImageFormat::BGRA8);
+		if (!FImageUtils::SaveImageByExtension(*AbsolutePath, Image))
+		{
+			UE_LOG(LogStrategosWorldGen, Error, TEXT("SaveToPng: falha ao escrever %s"), *AbsolutePath);
+			return false;
+		}
+
+		UE_LOG(LogStrategosWorldGen, Log, TEXT("Worldgen PNG salvo: %s"), *AbsolutePath);
+		return true;
 	}
 }

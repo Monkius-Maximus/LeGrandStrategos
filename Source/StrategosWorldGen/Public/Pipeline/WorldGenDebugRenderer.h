@@ -31,6 +31,12 @@ namespace StrategosWorldGen::DebugRender
 {
 	STRATEGOSWORLDGEN_API FColor BiomeColor(EBiomeType Biome);
 
+	/** Preenche OutPixels (MapSize.X * MapSize.Y, row-major) com a cor por pixel. */
+	STRATEGOSWORLDGEN_API bool BuildPixels(const FWorldGenResult& Result, EWorldGenRenderMode Mode, TArray<FColor>& OutPixels);
+
 	/** Gera uma UTexture2D transiente MapSize.X x MapSize.Y. Pode retornar nullptr. */
 	STRATEGOSWORLDGEN_API UTexture2D* RenderToTexture(const FWorldGenResult& Result, EWorldGenRenderMode Mode);
+
+	/** Exporta o resultado como PNG no caminho absoluto dado. Retorna false em falha. */
+	STRATEGOSWORLDGEN_API bool SaveToPng(const FString& AbsolutePath, const FWorldGenResult& Result, EWorldGenRenderMode Mode);
 }
