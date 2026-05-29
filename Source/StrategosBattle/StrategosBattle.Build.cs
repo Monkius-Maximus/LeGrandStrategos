@@ -11,6 +11,8 @@ public class StrategosBattle : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"InputCore",
+			"UMG",
 			"StrategosCore",
 			"StrategosData"
 		});
