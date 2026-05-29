@@ -1,4 +1,5 @@
 #include "BattleResolverService.h"
+#include "BattleCardAsset.h"
 #include "StrategosBattle.h"
 #include "World/WorldState.h"
 #include "World/Army.h"

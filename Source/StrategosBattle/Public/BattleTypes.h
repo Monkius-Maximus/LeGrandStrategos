@@ -3,8 +3,10 @@
 #include "CoreMinimal.h"
 #include "BattleTypes.generated.h"
 
+class UBattleCardAsset;
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Enums
+// Enums — ambiente
 // ─────────────────────────────────────────────────────────────────────────────
 
 UENUM(BlueprintType)
@@ -74,6 +76,7 @@ enum class EBattleLogType : uint8
 	DamageDealt    UMETA(DisplayName = "Dano causado"),
 	MoraleChanged  UMETA(DisplayName = "Moral alterada"),
 	SideRouted     UMETA(DisplayName = "Lado em fuga"),
+	CardPlayed     UMETA(DisplayName = "Carta jogada"),
 	BattleResolved UMETA(DisplayName = "Batalha resolvida")
 };
 
@@ -94,6 +97,36 @@ enum class EBattleStance : uint8
 	Hold       UMETA(DisplayName = "Segurar"),
 	Skirmish   UMETA(DisplayName = "Escaramuçar"),
 	Reserve    UMETA(DisplayName = "Reserva")
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums — cartas (Etapa 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+UENUM(BlueprintType)
+enum class ECardCategory : uint8
+{
+	Maneuver  UMETA(DisplayName = "Manobra"),
+	Assault   UMETA(DisplayName = "Assalto"),
+	Support   UMETA(DisplayName = "Suporte"),
+	Stratagem UMETA(DisplayName = "Estratagema"),
+	Reaction  UMETA(DisplayName = "Reação")
+};
+
+UENUM(BlueprintType)
+enum class ECardTiming : uint8
+{
+	OnPlay    UMETA(DisplayName = "Ao jogar"),
+	Reaction  UMETA(DisplayName = "Reação"),
+	Persistent UMETA(DisplayName = "Persistente")
+};
+
+UENUM(BlueprintType)
+enum class EActiveEffectType : uint8
+{
+	AttackModifier  UMETA(DisplayName = "Modificador de ataque"),
+	DefenseModifier UMETA(DisplayName = "Modificador de defesa"),
+	MoraleRegen     UMETA(DisplayName = "Regeneração de moral")
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,10 +157,11 @@ struct STRATEGOSBATTLE_API FActiveBattleEffect
 	UPROPERTY(BlueprintReadOnly) float Value = 0.f;
 	UPROPERTY(BlueprintReadOnly) int32 RoundsRemaining = 1;
 	UPROPERTY(BlueprintReadOnly) bool bPositive = true;
+	UPROPERTY(BlueprintReadOnly) EActiveEffectType EffectType = EActiveEffectType::AttackModifier;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Regimento dentro da batalha (cópia do estado estratégico — não referência)
+// Regimento dentro da batalha (cópia — não referência ao mapa estratégico)
 // ─────────────────────────────────────────────────────────────────────────────
 
 USTRUCT(BlueprintType)
@@ -144,7 +178,6 @@ struct STRATEGOSBATTLE_API FRegimentBattleState
 	UPROPERTY(BlueprintReadWrite) float OrganizationLeft = 1.f;
 	UPROPERTY(BlueprintReadWrite) EBattleStance Stance = EBattleStance::Hold;
 
-	// Stats capturados no momento do engajamento (imutáveis durante a batalha)
 	UPROPERTY(BlueprintReadOnly) int32 ATQ = 50;
 	UPROPERTY(BlueprintReadOnly) int32 DEF = 50;
 	UPROPERTY(BlueprintReadOnly) int32 MOR = 50;
@@ -153,7 +186,7 @@ struct STRATEGOSBATTLE_API FRegimentBattleState
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Resultado intermediário do CombatTick (para log e debug)
+// Resultado intermediário do CombatTick
 // ─────────────────────────────────────────────────────────────────────────────
 
 USTRUCT()
@@ -167,6 +200,38 @@ struct STRATEGOSBATTLE_API FCombatTickResult
 	float MoraleMod   = 1.f;
 	float SupplyMod   = 1.f;
 	float PositionMod = 1.f;
+	float EffectsMod  = 1.f;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Condições de uso de uma carta (para filtro de validade)
+// ─────────────────────────────────────────────────────────────────────────────
+
+USTRUCT(BlueprintType)
+struct STRATEGOSBATTLE_API FCardConditions
+{
+	GENERATED_BODY()
+
+	/** Vazio = qualquer terreno. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) TArray<EBattleTerrain> RequiredTerrain;
+
+	/** Vazio = qualquer fase. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) TArray<EBattlePhase> RequiredPhases;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MinMorale = 0.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) float MinSupply = 0.f;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Declaração de jogo de cartas em um round
+// ─────────────────────────────────────────────────────────────────────────────
+
+USTRUCT()
+struct STRATEGOSBATTLE_API FBattleDeclaration
+{
+	GENERATED_BODY()
+
+	UPROPERTY() TArray<UBattleCardAsset*> CardsToPlay;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,11 +257,11 @@ struct STRATEGOSBATTLE_API FBattleSide
 	UPROPERTY(BlueprintReadOnly) bool bHasInitiative = false;
 	UPROPERTY(BlueprintReadOnly) bool bRouted = false;
 
-	// Stage 4: deck de cartas (UBattleCardAsset*)
-	// TArray<UBattleCardAsset*> DrawPile;
-	// TArray<UBattleCardAsset*> Hand;
-	// TArray<UBattleCardAsset*> DiscardPile;
-	// TArray<UBattleCardAsset*> ExhaustPile;
+	// Deck de cartas (Etapa 4)
+	UPROPERTY() TArray<UBattleCardAsset*> DrawPile;
+	UPROPERTY() TArray<UBattleCardAsset*> Hand;
+	UPROPERTY() TArray<UBattleCardAsset*> DiscardPile;
+	UPROPERTY() TArray<UBattleCardAsset*> ExhaustPile;
 
 	// Implementados em BattleTypes.cpp
 	int32 TotalCurrentStrength() const;
@@ -210,7 +275,7 @@ struct STRATEGOSBATTLE_API FBattleSide
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Contexto vivo da batalha — DTO central
+// Contexto vivo da batalha
 // ─────────────────────────────────────────────────────────────────────────────
 
 USTRUCT(BlueprintType)
