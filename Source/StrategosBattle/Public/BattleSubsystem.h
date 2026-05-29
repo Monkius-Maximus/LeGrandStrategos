@@ -100,6 +100,9 @@ private:
 	void AdvancePhase();
 	FBattleResult Finalize();
 
+	/** Abre janela de reação ao lado adversário após uma carta OnPlay resolver. */
+	void TryReaction(int32 TriggeringSideIndex);
+
 	// ── Gestão de deck ───────────────────────────────────────────────────────
 
 	void DrawCards(FBattleSide& Side, int32 TargetHandSize);

@@ -116,3 +116,21 @@ public:
 	virtual void Apply(FBattleContext& Ctx, FBattleSide& Source, FBattleSide& Target) override;
 	virtual FText GetDescriptionText() const override;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UEffect_ExhaustEnemyCard
+// Remove a carta de maior Priority da mão inimiga (vai para ExhaustPile).
+// Etapa 7: usado pela carta de Reação "Contra-Ataque".
+// ─────────────────────────────────────────────────────────────────────────────
+
+UCLASS(DisplayName = "Esgotar Carta Inimiga")
+class STRATEGOSBATTLE_API UEffect_ExhaustEnemyCard : public UBattleEffect
+{
+	GENERATED_BODY()
+public:
+	virtual bool CanApply(const FBattleContext& Ctx,
+	                      const FBattleSide& Source,
+	                      const FBattleSide& Target) const override;
+	virtual void Apply(FBattleContext& Ctx, FBattleSide& Source, FBattleSide& Target) override;
+	virtual FText GetDescriptionText() const override;
+};

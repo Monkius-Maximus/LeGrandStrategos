@@ -262,6 +262,12 @@ void UBattleSubsystem::ResolveDeclarations(const FBattleDeclaration& AttDecl,
 			Play.Card->CommandCost);
 
 		OnCardPlayed.Broadcast(Play.SideIndex, FName(*Play.Card->DisplayName.ToString()));
+
+		// Etapa 7: janela de reação após cada carta OnPlay
+		if (Play.Card->Timing == ECardTiming::OnPlay)
+		{
+			TryReaction(Play.SideIndex);
+		}
 	}
 }
 
@@ -376,6 +382,28 @@ TArray<UBattleCardAsset*> UBattleSubsystem::BuildFallbackDeck(UObject* Outer)
 		Mor->MoraleDelta  = -15.f;
 		Mor->bTargetEnemy = true;
 		Card->Effects.Add(Mor);
+
+		Deck.Add(Card);
+	}
+
+	// 6. Contra-Ataque (Reaction, 2 CP) — Etapa 7
+	{
+		UBattleCardAsset* Card = MakeCard(TEXT("Contra-Ataque"), ECardCategory::Reaction, 2, 7);
+		Card->Description  = FText::FromString(TEXT("Responde ao ataque inimigo: esgotar sua melhor carta e reforçar defesa."));
+		Card->Timing       = ECardTiming::Reaction;
+		Card->bExhaustOnPlay = true;
+
+		UEffect_ExhaustEnemyCard* Exh = NewObject<UEffect_ExhaustEnemyCard>(Card);
+		Card->Effects.Add(Exh);
+
+		UEffect_AddPersistent* Def = NewObject<UEffect_AddPersistent>(Card);
+		Def->EffectId     = FName("CounterAtk_DEF");
+		Def->EffectLabel  = FText::FromString(TEXT("Contra-Defesa"));
+		Def->Value        = 0.15f;
+		Def->Duration     = 1;
+		Def->EffectType   = EActiveEffectType::DefenseModifier;
+		Def->bTargetEnemy = false;
+		Card->Effects.Add(Def);
 
 		Deck.Add(Card);
 	}
@@ -559,6 +587,53 @@ FBattleResult UBattleSubsystem::Finalize()
 		FMath::RoundToInt(Context.Defender.StrengthRatio() * 100));
 
 	return Result;
+}
+
+void UBattleSubsystem::TryReaction(int32 TriggeringSideIndex)
+{
+	const int32 ReactIdx  = 1 - TriggeringSideIndex;
+	FBattleSide& ReactSide = (ReactIdx == 0) ? Context.Attacker : Context.Defender;
+	FBattleSide& OtherSide = (ReactIdx == 0) ? Context.Defender : Context.Attacker;
+
+	UBattleCardAsset* BestReaction = nullptr;
+	int32 BestPriority = -1;
+
+	for (UBattleCardAsset* Card : ReactSide.Hand)
+	{
+		if (!Card) continue;
+		if (Card->Timing != ECardTiming::Reaction) continue;
+		if (!Card->IsValidInContext(Context, ReactSide)) continue;
+		if (Card->CommandCost > ReactSide.CommandPoints) continue;
+		if (Card->Priority > BestPriority)
+		{
+			BestPriority = Card->Priority;
+			BestReaction = Card;
+		}
+	}
+
+	if (!BestReaction) return;
+
+	ReactSide.CommandPoints -= BestReaction->CommandCost;
+
+	for (UBattleEffect* Effect : BestReaction->Effects)
+	{
+		if (!Effect) continue;
+		if (Effect->CanApply(Context, ReactSide, OtherSide))
+		{
+			Effect->Apply(Context, ReactSide, OtherSide);
+		}
+	}
+
+	ReactSide.Hand.Remove(BestReaction);
+	if (BestReaction->bExhaustOnPlay)
+		ReactSide.ExhaustPile.Add(BestReaction);
+	else
+		ReactSide.DiscardPile.Add(BestReaction);
+
+	LogEntry(ReactIdx, EBattleLogType::CardPlayed,
+		FString::Printf(TEXT("Reação: %s"), *BestReaction->DisplayName.ToString()),
+		BestReaction->CommandCost);
+	OnCardPlayed.Broadcast(ReactIdx, FName(*BestReaction->DisplayName.ToString()));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

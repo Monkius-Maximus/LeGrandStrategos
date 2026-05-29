@@ -119,5 +119,45 @@ float UBattleAIController::ScoreCard(const UBattleCardAsset* Card,
 	// Bias de categoria do perfil
 	Score *= CatBias;
 
+	// Etapa 8: blend com lookahead simulado conforme temperatura do perfil
+	const float Temp = Profile ? Profile->LookaheadTemperature : 0.f;
+	if (Temp > 0.f && Card->Timing == ECardTiming::OnPlay)
+	{
+		const float StateScore = SimulateCardImpact(Card, Ctx, Self, Enemy);
+		Score = FMath::Lerp(Score, StateScore, FMath::Clamp(Temp, 0.f, 1.f));
+	}
+
 	return Score;
+}
+
+float UBattleAIController::EvaluateState(
+	const FBattleSide& Self, const FBattleSide& Enemy) const
+{
+	return Self.StrengthRatio()    * 50.f
+	     + (Self.Morale  / 100.f) * 30.f
+	     - Enemy.StrengthRatio()   * 40.f
+	     - (Enemy.Morale / 100.f) * 20.f;
+}
+
+float UBattleAIController::SimulateCardImpact(
+	const UBattleCardAsset* Card,
+	const FBattleContext& Ctx,
+	const FBattleSide& Self,
+	const FBattleSide& Enemy) const
+{
+	FBattleContext SimCtx = Ctx;
+	const bool bSelfIsAttacker = (&Self == &Ctx.Attacker);
+	FBattleSide& SimSelf  = bSelfIsAttacker ? SimCtx.Attacker : SimCtx.Defender;
+	FBattleSide& SimEnemy = bSelfIsAttacker ? SimCtx.Defender : SimCtx.Attacker;
+
+	for (UBattleEffect* Effect : Card->Effects)
+	{
+		if (!Effect) continue;
+		if (Effect->CanApply(SimCtx, SimSelf, SimEnemy))
+		{
+			Effect->Apply(SimCtx, SimSelf, SimEnemy);
+		}
+	}
+
+	return EvaluateState(SimSelf, SimEnemy);
 }

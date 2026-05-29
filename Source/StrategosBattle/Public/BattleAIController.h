@@ -43,6 +43,15 @@ private:
 	                const FBattleSide& Self,
 	                const FBattleSide& Enemy) const;
 
+	/** Etapa 8: simula efeitos da carta em cópia do contexto e retorna score do estado resultante. */
+	float SimulateCardImpact(const UBattleCardAsset* Card,
+	                          const FBattleContext& Ctx,
+	                          const FBattleSide& Self,
+	                          const FBattleSide& Enemy) const;
+
+	/** Avalia o estado (perspectiva de Self): força + moral vs inimigo. */
+	float EvaluateState(const FBattleSide& Self, const FBattleSide& Enemy) const;
+
 	UPROPERTY()
 	TWeakObjectPtr<UBattleSubsystem> Owner;
 

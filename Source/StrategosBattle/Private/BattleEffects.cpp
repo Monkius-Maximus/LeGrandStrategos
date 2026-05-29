@@ -177,3 +177,46 @@ FText UEffect_DrawCards::GetDescriptionText() const
 		NSLOCTEXT("Battle", "DrawFmt", "Compra {0} carta(s)"),
 		FText::AsNumber(CardsToDraw));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UEffect_ExhaustEnemyCard
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool UEffect_ExhaustEnemyCard::CanApply(const FBattleContext& /*Ctx*/,
+                                         const FBattleSide& /*Source*/,
+                                         const FBattleSide& Target) const
+{
+	return !Target.Hand.IsEmpty();
+}
+
+void UEffect_ExhaustEnemyCard::Apply(FBattleContext& /*Ctx*/,
+                                      FBattleSide& /*Source*/, FBattleSide& Target)
+{
+	if (Target.Hand.IsEmpty()) return;
+
+	int32 BestIdx = 0;
+	int32 BestPrio = Target.Hand[0] ? Target.Hand[0]->Priority : 0;
+	for (int32 i = 1; i < Target.Hand.Num(); ++i)
+	{
+		if (Target.Hand[i] && Target.Hand[i]->Priority > BestPrio)
+		{
+			BestPrio = Target.Hand[i]->Priority;
+			BestIdx  = i;
+		}
+	}
+
+	UBattleCardAsset* Exhausted = Target.Hand[BestIdx];
+	Target.Hand.RemoveAt(BestIdx);
+	if (Exhausted)
+	{
+		Target.ExhaustPile.Add(Exhausted);
+		UE_LOG(LogStrategosBattle, Log,
+			TEXT("Effect_ExhaustEnemyCard: '%s' esgotada da mão inimiga."),
+			*Exhausted->DisplayName.ToString());
+	}
+}
+
+FText UEffect_ExhaustEnemyCard::GetDescriptionText() const
+{
+	return NSLOCTEXT("Battle", "ExhaustEnemyDesc", "Esgotar melhor carta inimiga");
+}
