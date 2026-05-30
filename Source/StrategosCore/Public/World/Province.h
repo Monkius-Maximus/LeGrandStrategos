@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "World/TerrainType.h"
+#include "Economy/ProvinceGeography.h"
 #include "Economy/PopGroup.h"
 #include "Province.generated.h"
 
@@ -36,8 +37,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Province")
 	FVector2D MapPosition = FVector2D::ZeroVector;
 
+	/**
+	 * Geografia natural (Camada 1 — Recursos e Produção). Fonte única dos quatro
+	 * eixos (relevo/clima/vegetação/hidrografia). ETerrainType é derivado via
+	 * GetTerrain(); o tier de água via Geography.Hydrography.GetWaterAccessTier().
+	 */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Province")
-	ETerrainType Terrain = ETerrainType::Plains;
+	FProvinceGeography Geography;
 
 	/** Estratos populacionais que vivem aqui. */
 	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Province|Economy")
@@ -63,6 +69,46 @@ public:
 	bool IsAdjacentTo(FName OtherProvinceId) const
 	{
 		return AdjacentProvinceIds.Contains(OtherProvinceId);
+	}
+
+	/**
+	 * ETerrainType derivado da geografia em 4 eixos, para os consumidores legados
+	 * (Military, UI, RGO) que ainda raciocinam num enum único. A geografia é a
+	 * verdade; este enum é uma projeção lossy. Quando esses consumidores migrarem
+	 * para os eixos, este getter sai.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Province")
+	ETerrainType GetTerrain() const
+	{
+		if (Geography.Hydrography.bIsCoastal || Geography.Topography == ETerrainTopography::Coastal)
+		{
+			return ETerrainType::Coast;
+		}
+		if (Geography.Topography == ETerrainTopography::Mountains)
+		{
+			return ETerrainType::Mountains;
+		}
+		if (Geography.Topography == ETerrainTopography::Hills || Geography.Topography == ETerrainTopography::Plateau)
+		{
+			return ETerrainType::Hills;
+		}
+		if (Geography.Topography == ETerrainTopography::Wetlands || Geography.Vegetation == EVegetationCover::Wetland)
+		{
+			return ETerrainType::Marsh;
+		}
+		if (Geography.Vegetation == EVegetationCover::Desert)
+		{
+			return ETerrainType::Desert;
+		}
+		if (Geography.Vegetation == EVegetationCover::Tundra)
+		{
+			return ETerrainType::Tundra;
+		}
+		if (Geography.Vegetation == EVegetationCover::DenseForest || Geography.Vegetation == EVegetationCover::LightForest)
+		{
+			return ETerrainType::Forest;
+		}
+		return ETerrainType::Plains;
 	}
 
 	UFUNCTION(BlueprintPure, Category = "Province|Economy")

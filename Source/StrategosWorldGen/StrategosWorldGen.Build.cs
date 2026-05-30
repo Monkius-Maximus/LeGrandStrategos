@@ -14,7 +14,10 @@ public class StrategosWorldGen : ModuleRules
 		{
 			"Core",
 			"CoreUObject",
-			"Engine"
+			"Engine",
+			// O classificador de geografia emite FProvinceGeography (tipos de jogo
+			// estáveis). Direção de dependência correta: experimental -> core.
+			"StrategosCore"
 			// "ProceduralMeshComponent" sera adicionado quando o render Opcao B
 			// (mesh procedural) entrar; o render de debug atual e Opcao A (textura).
 		});

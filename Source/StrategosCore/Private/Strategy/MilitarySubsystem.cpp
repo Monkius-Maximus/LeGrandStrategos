@@ -73,7 +73,7 @@ int32 UMilitarySubsystem::GetMovementCostDays(FName FromProvinceId, FName ToProv
 		return 0;
 	}
 
-	switch (To->Terrain)
+	switch (To->GetTerrain())
 	{
 		case ETerrainType::Plains:    return 3;
 		case ETerrainType::Coast:     return 3;

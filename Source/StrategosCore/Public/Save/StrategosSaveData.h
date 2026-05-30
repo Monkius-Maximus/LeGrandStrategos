@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
-#include "World/TerrainType.h"
+#include "Economy/ProvinceGeography.h"
 #include "Economy/PopStratum.h"
 #include "Economy/Treasury.h"
 #include "Economy/BuildingOwnerKind.h"
@@ -68,7 +68,10 @@ struct FProvinceRecord
 	UPROPERTY() FName OwnerNationId;
 	UPROPERTY() TArray<FName> AdjacentProvinceIds;
 	UPROPERTY() FVector2D MapPosition = FVector2D::ZeroVector;
-	UPROPERTY() ETerrainType Terrain = ETerrainType::Plains;
+
+	// Recursos e Produção (Sessão 1): geografia natural em 4 eixos.
+	// Substitui o antigo ETerrainType Terrain (agora derivado via GetTerrain()).
+	UPROPERTY() FProvinceGeography Geography;
 
 	// Etapa 2: economia.
 	UPROPERTY() int32 BuildingSlots = 3;
@@ -101,10 +104,13 @@ struct FArmyRecord
 /**
  * UStrategosSaveData — snapshot serializável do estado do mundo.
  *
- * SaveVersion = 5 (Etapa 2 Diplomacy v1):
- *  - DiplomaticRelations: matriz esparsa N×N de FDiplomaticRelation
+ * SaveVersion = 6 (Recursos e Produção, Sessão 1):
+ *  - FProvinceRecord.Geography: geografia natural em 4 eixos (topografia/clima/
+ *    vegetação/hidrografia). Substitui o antigo campo Terrain (ETerrainType),
+ *    que agora é derivado em runtime via UProvince::GetTerrain().
  *
  * Versões anteriores:
+ *  - 5: DiplomaticRelations (matriz esparsa N×N de FDiplomaticRelation)
  *  - 4: identidade visual de Nation + expansão de Army (stats, modifiers, state, XP)
  *  - 3: pending decisions de Events
  *  - 2: economia (Treasury, Stockpile, POPs, Buildings)
@@ -128,7 +134,7 @@ class STRATEGOSCORE_API UStrategosSaveData : public USaveGame
 	GENERATED_BODY()
 
 public:
-	UPROPERTY() int32 SaveVersion = 5;
+	UPROPERTY() int32 SaveVersion = 6;
 	UPROPERTY() FDateTime CurrentDate;
 	UPROPERTY() FName PlayerNationId;
 	UPROPERTY() TArray<FNationRecord> Nations;

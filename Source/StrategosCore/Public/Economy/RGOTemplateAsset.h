@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "World/TerrainType.h"
-#include "Economy/ClimateType.h"
+#include "World/ProvinceGeographyTypes.h"
 #include "Economy/WaterAccessType.h"
 #include "Economy/ResourceScope.h"
 #include "RGOTemplateAsset.generated.h"
@@ -36,7 +36,7 @@ struct STRATEGOSCORE_API FRGOYieldRule
 	TSet<ETerrainType> EligibleTerrain;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Conditions")
-	TSet<EClimateType> EligibleClimate;
+	TSet<EClimateZone> EligibleClimate;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rule|Conditions")
 	TSet<EWaterAccessType> EligibleWaterAccess;

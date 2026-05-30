@@ -16,12 +16,53 @@
 
 namespace
 {
+	// Expande o ETerrainType de autoria (rows/sandbox handcrafted) na geografia
+	// natural em 4 eixos. A geografia é a fonte única; o ETerrainType vira
+	// shorthand de autoria. GetTerrain() reprojeta de volta para os consumidores
+	// legados (round-trip preservado para os 8 terrenos de terra usados aqui).
+	FProvinceGeography MakeGeographyFromLegacyTerrain(ETerrainType T)
+	{
+		FProvinceGeography G;
+		switch (T)
+		{
+			case ETerrainType::Mountains:
+				G.Topography = ETerrainTopography::Mountains; G.Vegetation = EVegetationCover::Grassland;
+				G.Climate = EClimateZone::Continental; G.Fertility = 0.2f; break;
+			case ETerrainType::Hills:
+				G.Topography = ETerrainTopography::Hills; G.Vegetation = EVegetationCover::Grassland;
+				G.Climate = EClimateZone::Continental; G.Fertility = 0.4f; break;
+			case ETerrainType::Forest:
+				G.Topography = ETerrainTopography::Flatland; G.Vegetation = EVegetationCover::DenseForest;
+				G.Climate = EClimateZone::Continental; G.Fertility = 0.5f; break;
+			case ETerrainType::Plains:
+				G.Topography = ETerrainTopography::Flatland; G.Vegetation = EVegetationCover::Grassland;
+				G.Climate = EClimateZone::Continental; G.Fertility = 0.7f; break;
+			case ETerrainType::Coast:
+				G.Topography = ETerrainTopography::Coastal; G.Vegetation = EVegetationCover::Grassland;
+				G.Climate = EClimateZone::Oceanic; G.Fertility = 0.5f; G.Hydrography.bIsCoastal = true; break;
+			case ETerrainType::Marsh:
+				G.Topography = ETerrainTopography::Wetlands; G.Vegetation = EVegetationCover::Wetland;
+				G.Climate = EClimateZone::Continental; G.Fertility = 0.6f; G.Hydrography.bHasMinorRiver = true; break;
+			case ETerrainType::Tundra:
+				G.Topography = ETerrainTopography::Flatland; G.Vegetation = EVegetationCover::Tundra;
+				G.Climate = EClimateZone::Arctic; G.Fertility = 0.1f; break;
+			case ETerrainType::Desert:
+				G.Topography = ETerrainTopography::Flatland; G.Vegetation = EVegetationCover::Desert;
+				G.Climate = EClimateZone::Arid; G.Fertility = 0.1f; break;
+			case ETerrainType::Water:
+			default:
+				G.Topography = ETerrainTopography::Coastal; G.Vegetation = EVegetationCover::Grassland;
+				G.Climate = EClimateZone::Oceanic; G.Fertility = 0.2f; G.Hydrography.bIsCoastal = true; break;
+		}
+		return G;
+	}
+
 	// Mapeia ETerrainType → potencial de extração natural por bem.
-	void ApplyTerrainPotential(UProvince& Prov)
+	void ApplyTerrainPotential(UProvince& Prov, ETerrainType T)
 	{
 		Prov.RawResourcePotential.Empty();
 
-		switch (Prov.Terrain)
+		switch (T)
 		{
 			case ETerrainType::Mountains:
 				Prov.RawResourcePotential.Add(TEXT("IronOre"), 1.0f);
@@ -215,8 +256,8 @@ bool UWorldBootstrapper::ApplyBootstrap(UWorldState* WorldState, UWorldBootstrap
 			P->OwnerNationId = Row.OwnerNationId;
 			P->AdjacentProvinceIds = Row.AdjacentProvinceIds;
 			P->MapPosition = Row.MapPosition;
-			P->Terrain = Row.Terrain;
-			ApplyTerrainPotential(*P);
+			P->Geography = MakeGeographyFromLegacyTerrain(Row.Terrain);
+			ApplyTerrainPotential(*P, Row.Terrain);
 			SeedPopsForProvince(*P, /*bIsCapital=*/false);
 		});
 
@@ -330,8 +371,8 @@ void UWorldBootstrapper::ApplyDefaultSandbox(UWorldState* WorldState)
 		P->DisplayName = SP.Name;
 		P->OwnerNationId = SP.Owner;
 		P->MapPosition = SP.Pos;
-		P->Terrain = SP.T;
-		ApplyTerrainPotential(*P);
+		P->Geography = MakeGeographyFromLegacyTerrain(SP.T);
+		ApplyTerrainPotential(*P, SP.T);
 		SeedPopsForProvince(*P, /*bIsCapital=*/false);
 	}
 

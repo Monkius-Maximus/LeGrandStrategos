@@ -1,23 +1,23 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "World/TerrainType.h"
-#include "Economy/ClimateType.h"
-#include "Economy/WaterAccessType.h"
+#include "World/ProvinceGeographyTypes.h"
 #include "ProvinceGeography.generated.h"
 
 /**
- * FProvinceGeography — Bundle das variáveis geográficas que multiplicam
- * o potencial econômico da província.
+ * FProvinceGeography — Geografia NATURAL e estática da província (Camada 1).
  *
- * Esta struct é o **input** consumido por URGOTemplateAsset para resolver,
- * em bootstrap, o conjunto de bens viáveis e seus multiplicadores em
- * UProvince::RawResourcePotential. Não é mutável em tempo de execução
- * (mudanças climáticas / desertificação são fora de escopo no MVP).
+ * Quatro eixos independentes (relevo / clima / vegetação / hidrografia) +
+ * fertilidade e recurso principal derivados. É a fonte única da geografia da
+ * província: ETerrainType (legado) passou a ser DERIVADO disto via
+ * UProvince::GetTerrain(); EWaterAccessType vem de Hydrography.GetWaterAccessTier().
  *
- * Fertility e ConstructionSlotCount são derivados primariamente de Terrain
- * + Climate na geração do mapa, mas ficam editáveis para overrides manuais
- * nas províncias canônicas (Albion/Galia/Norden).
+ * Populada pela geração de mundo (StrategosWorldGen::GeographyClassifier) ou
+ * pelo bootstrap handcrafted. Imutável em runtime nesta fase — mudanças por ação
+ * do jogador (desmatar/drenar/irrigar) são camada humana de sessão futura.
+ *
+ * Slots foram removidos daqui (eram código morto e duplicavam
+ * UProvince::BuildingSlots, que é o pool único do Alpha — ver Sessão 2).
  */
 USTRUCT(BlueprintType)
 struct STRATEGOSCORE_API FProvinceGeography
@@ -25,33 +25,23 @@ struct STRATEGOSCORE_API FProvinceGeography
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography")
-	ETerrainType Terrain = ETerrainType::Plains;
+	ETerrainTopography Topography = ETerrainTopography::Flatland;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography")
-	EClimateType Climate = EClimateType::Temperate;
+	EClimateZone Climate = EClimateZone::Continental;
+
+	/** Cobertura vegetal natural (clímax). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography")
+	EVegetationCover Vegetation = EVegetationCover::Grassland;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography")
-	EWaterAccessType WaterAccess = EWaterAccessType::None;
+	FHydrography Hydrography;
 
 	/** Fertilidade do solo em [0..1]. 0 = estéril, 1 = excepcional. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float Fertility = 0.5f;
 
-	/**
-	 * Quantos slots de cada âmbito a província oferece. A soma define o teto
-	 * total de prédios; o split entre Vegetal/Mineral/Aquifer determina
-	 * quais âmbitos o jogador pode diversificar.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography|Slots", meta = (ClampMin = "0"))
-	int32 VegetalSlots = 2;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography|Slots", meta = (ClampMin = "0"))
-	int32 MineralSlots = 0;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography|Slots", meta = (ClampMin = "0"))
-	int32 AquiferSlots = 0;
-
-	/** Identificador do bem que recebe bônus de Principal (+20%). None = nenhum. */
+	/** Bem que recebe bônus de Principal (+20%). None = nenhum. Resolvido na Sessão 4. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Geography|Resources")
 	FName PrincipalResourceId;
 };
