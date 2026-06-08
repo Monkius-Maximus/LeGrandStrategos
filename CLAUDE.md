@@ -16,18 +16,20 @@ Mapa **2D puro** (estilo Vic2 / Civ3 / Humankind sem mapa 3D). UI **gridada com 
 
 - **Unreal Engine 5.5**, C++, Build Settings V5
 - **Idioma primário: Português (PT-BR).** Código, comentários, commits, UI — tudo PT exceto identificadores C++ (que ficam em inglês por convenção UE).
-- 5 módulos:
+- 6 módulos:
   - **StrategosCore** — subsistemas de simulação (Time, Map, Military, Economy, Events, Diplomacy, Save, GameFlow, World containers)
   - **StrategosData** — DataAssets (ativação pendente; hoje vivem em StrategosCore)
-  - **StrategosBattle** — combate tático (futuro)
+  - **StrategosBattle** — combate tático (núcleo implementado: loop de fases, cartas, efeitos, IA tática, auto-resolve, replay; visualização BP + polish pendentes)
   - **StrategosAI** — `UAIPlaceholderSubsystem` por arquétipo (Militarist/Diplomat/Merchant/Pragmatist)
-  - **StrategosUI** — UMG, HUD widget, popups de Decision
+  - **StrategosUI** — UMG, HUD widget, popups de Decision, câmera e atores de mapa
+  - **StrategosWorldGen** — geração procedural de geografia (sub-projeto experimental de estudo, fora do core MVP; produz `FProvinceGeography`)
 
 ---
 
 ## Arquitetura — onde está documentada
 
-- `docs/architecture/*.md` — 15 docs cobrindo cada subsistema (Time, Map, Military, Economy, Events, Politics, Diplomacy, Progress, Battle, AI, etc.)
+- `docs/architecture/*.md` — docs cobrindo cada subsistema (Time, Map, Military, Economy, Events, Politics, Diplomacy, Progress, Battle, AI, etc.)
+- `docs/architecture/98-estado-implementacao.md` — **snapshot do estado real implementado** (o que está pronto/parcial/pendente por módulo, com versão e commit de referência). Complementa o `PROJECT_STATE.md`, não o substitui.
 - `docs/setup/*.md` — guias para popular conteúdo via editor (DataAssets de Eventos, Economia, UI grid)
 - `PROJECT_STATE.md` — **mora no Obsidian do usuário**. Estado vivo do projeto: feito, em andamento, próximo, perguntas abertas. Usuário cola no início de cada sessão.
 
@@ -64,14 +66,14 @@ Mapa **2D puro** (estilo Vic2 / Civ3 / Humankind sem mapa 3D). UI **gridada com 
 - NUNCA `--no-verify`
 
 ### Branches
-- Desenvolvimento atual em `claude/grand-strategy-architecture-eIYSr`
+- Desenvolvimento ocorre em branches `claude/*` criadas por sessão; merge em `main` via PR
 - Não fazer merge pra `main` sem aprovação explícita
 
 ---
 
 ## Save format — atenção crítica
 
-`UStrategosSaveData::SaveVersion` é incrementado a cada expansão do snapshot. Versão atual: **5**.
+`UStrategosSaveData::SaveVersion` é incrementado a cada expansão do snapshot. Versão atual: **6**.
 
 Histórico:
 - 1: base (Nations, Provinces, Armies)
@@ -79,6 +81,7 @@ Histórico:
 - 3: economia completa + pending decisions de Events
 - 4: identidade visual de Nation + expansão de Army (stats, modifiers, state, XP)
 - 5: matriz de Diplomatic Relations
+- 6: geografia natural de província (`FProvinceGeography` — topografia, clima, vegetação, hidrografia; 4 eixos)
 
 **Toda mudança que adiciona campo a algum `FRecord` precisa bumpar SaveVersion** e atualizar o comentário no header.
 
@@ -94,7 +97,7 @@ Histórico:
 - **Stance de unidade** (Carga/Reconhecer/Escaramuça): adiado, entra com BattleResolver.
 - **Hybrid building ownership:** Government + Private (Bourgeoisie auto-investe via profitability scoring com FRandomStream).
 - **3 mutex groups de PM modifiers:** Pace / Labor / Quality.
-- **Bourgeoisie:** stratum ativo no MVP. Aristocracy/Soldier/Clergy são stubs.
+- **Strata ativos no MVP:** Laborer, Artisan, FactoryWorker, Bourgeoisie (4 ativos). Aristocracy/Soldier/Clergy são stubs. A Bourgeoisie é a que auto-investe.
 
 ---
 
@@ -153,8 +156,10 @@ Estágios da arquitetura (todos documentados em `docs/architecture/`):
 
 - **Etapa 0** — Foundation ✅
 - **Etapa 1** — MVP (World, Map, Military, Save, AI placeholder) ✅
-- **Etapa 2** — Prototype (Economy ✅ + Events ✅ + UI Cards 🚧 + Diplomacy 🚧)
-- **Etapa 3** — Sistemas internos (Progress, Politics, Battle, AI Director)
+- **Etapa 2** — Prototype (Economy ✅ + Events ✅ + Diplomacy v1 ✅ matriz/data layer + HUD C++ ✅ / layout BP 🚧)
+- **Etapa 3** — Sistemas internos: Battle núcleo ✅ (sub-etapas 1–10 em código; visualização BP + polish 🚧) · Progress ❌ · Politics ❌ · AI Director ❌ (hoje só `AIPlaceholderSubsystem`)
 - **Etapa 4** — Escala (Multiplayer, conteúdo, polish)
 
-O detalhe granular do que falta dentro de cada etapa vive no `PROJECT_STATE.md`.
+Adiantado fora de ordem: **Recursos/Produção Sessão 1** (geografia de província, SaveVersion 6) e o módulo experimental **StrategosWorldGen**.
+
+O detalhe por subsistema vive em `docs/architecture/98-estado-implementacao.md`; o "onde paramos hoje" vive no `PROJECT_STATE.md`.
