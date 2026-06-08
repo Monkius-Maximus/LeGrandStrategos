@@ -86,7 +86,7 @@ FProvinceSummary UStrategosProvinceDockWidget::GetProvinceSummary() const
 	if (!P) return Out;
 
 	Out.ProvinceName  = P->DisplayName;
-	Out.TerrainName   = StaticEnum<ETerrainType>()->GetDisplayNameTextByValue((int64)P->Terrain);
+	Out.TerrainName   = StaticEnum<ETerrainType>()->GetDisplayNameTextByValue((int64)P->GetTerrain());
 	Out.BuildingSlots = P->BuildingSlots;
 	Out.UsedSlots     = P->GetUsedBuildingSlots();
 
@@ -265,10 +265,10 @@ FText UStrategosProvinceDockWidget::GetTerrainDescription() const
 		{ ETerrainType::Mountains, NSLOCTEXT("Terrain", "Mountains", "Terreno montanhoso rico em minério; passagens dificultam o avanço inimigo.") },
 		{ ETerrainType::Forest,    NSLOCTEXT("Terrain", "Forest",    "Floresta densa — madeira abundante, mas mobilidade reduzida.") },
 		{ ETerrainType::Desert,    NSLOCTEXT("Terrain", "Desert",    "Deserto árido. Suprimento precário; baixa densidade populacional.") },
-		{ ETerrainType::Coastal,   NSLOCTEXT("Terrain", "Coastal",   "Costa navegável: acesso a rotas comerciais marítimas e pesca.") },
+		{ ETerrainType::Coast,     NSLOCTEXT("Terrain", "Coast",     "Costa navegável: acesso a rotas comerciais marítimas e pesca.") },
 	};
 
-	if (const FText* Desc = Descriptions.Find(P->Terrain)) return *Desc;
+	if (const FText* Desc = Descriptions.Find(P->GetTerrain())) return *Desc;
 	return FText::GetEmpty();
 }
 

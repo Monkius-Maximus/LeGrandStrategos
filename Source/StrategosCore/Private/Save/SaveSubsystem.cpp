@@ -101,7 +101,7 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 		R.OwnerNationId = Province->OwnerNationId;
 		R.AdjacentProvinceIds = Province->AdjacentProvinceIds;
 		R.MapPosition = Province->MapPosition;
-		R.Terrain = Province->Terrain;
+		R.Geography = Province->Geography;
 		R.BuildingSlots = Province->BuildingSlots;
 		R.RawResourcePotential = Province->RawResourcePotential;
 
@@ -218,7 +218,7 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 		P->OwnerNationId = R.OwnerNationId;
 		P->AdjacentProvinceIds = R.AdjacentProvinceIds;
 		P->MapPosition = R.MapPosition;
-		P->Terrain = R.Terrain;
+		P->Geography = R.Geography;
 		P->BuildingSlots = R.BuildingSlots;
 		P->RawResourcePotential = R.RawResourcePotential;
 
