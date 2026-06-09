@@ -86,12 +86,13 @@ Independente do subsistema, alguns princípios atravessam toda a arquitetura:
 
 ## Status de Detalhamento
 
-Todos os 14 subsistemas críticos do gameplay estão **detalhados** em arquitetura. Restam para serem aprofundados quando a implementação começar:
+Todos os 14 subsistemas críticos do gameplay estão **detalhados** em arquitetura.
 
-- `USaveSubsystem` — esboçado em `00-overview.md`
-- `UMapSubsystem` — esboçado em `00-overview.md`
+Para o **estado real de implementação** (o que está pronto, parcial ou pendente por módulo, com versão e commit de referência), veja o snapshot em [`98-estado-implementacao.md`](architecture/98-estado-implementacao.md). É a fonte única para acompanhar progresso de código.
 
-Esses dois são técnicos/UX e ganham complexidade real só quando os outros sistemas estiverem implementados, então o detalhamento foi adiado de propósito.
+`USaveSubsystem` e `UMapSubsystem` **já estão implementados (v1)** mesmo sem doc de arquitetura dedicado — só são esboçados em `00-overview.md`. Restam neles evoluções técnicas/UX (migração de save; modos de mapa, fog of war).
+
+O módulo experimental `StrategosWorldGen` (geração procedural de geografia) tem doc própria em [`../Source/StrategosWorldGen/README.md`](../Source/StrategosWorldGen/README.md) e está fora do core MVP.
 
 ---
 
