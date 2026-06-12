@@ -26,4 +26,10 @@ public:
 	void Apply(UWorldState* WorldState, const FEventContext& Context);
 
 	virtual void Apply_Implementation(UWorldState* WorldState, const FEventContext& Context) {}
+
+	/** Resumo legível para EffectsPreview no modal. Ex.: "+500 Ouro". */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Event|Effect")
+	FText GetDescription() const;
+
+	virtual FText GetDescription_Implementation() const { return FText::GetEmpty(); }
 };

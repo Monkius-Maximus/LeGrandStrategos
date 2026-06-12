@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Events/EventCondition.h"
 #include "EventChoice.generated.h"
 
 class UEventEffect;
@@ -10,6 +11,8 @@ class UEventEffect;
  *
  * Effects são aplicados em ordem quando esta escolha é selecionada.
  * Tooltip serve para HUD explicar o trade-off antes da seleção.
+ * AvailabilityConditions determinam se a choice aparece habilitada no modal
+ * (estilo EU4/Victoria 3: botões bloqueados com tooltip explicativo).
  */
 USTRUCT(BlueprintType)
 struct STRATEGOSCORE_API FEventChoice
@@ -24,4 +27,13 @@ struct STRATEGOSCORE_API FEventChoice
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Choice")
 	TArray<TObjectPtr<UEventEffect>> Effects;
+
+	/** Se qualquer condição falhar, a choice aparece bloqueada (bAvailable=false). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Choice|Disponibilidade")
+	TArray<TObjectPtr<UEventCondition>> AvailabilityConditions;
+
+	/** Substituição do Tooltip quando bAvailable=false. Ex.: "Requer: 500 Ouro". */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Choice|Disponibilidade",
+		meta = (MultiLine = "true"))
+	FText UnavailableTooltip;
 };

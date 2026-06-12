@@ -45,6 +45,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event")
 	EEventType Type = EEventType::Notification;
 
+	/**
+	 * Categoria narrativa do evento para cor e filtro no modal.
+	 * Valores canônicos: "economic" | "political" | "military" | "diplomatic" | "notification".
+	 * Se NAME_None, o modal deriva da Type como fallback.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event")
+	FName Category;
+
 	/** Tag canônica do trigger. Convenção "Subsystem.EventName". */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event|Trigger")
 	FName TriggerTag;

@@ -7,6 +7,7 @@
 
 class UEventAsset;
 class UEventSubsystem;
+class UWorldState;
 
 USTRUCT(BlueprintType)
 struct STRATEGOSUI_API FEventChoiceRow
@@ -40,6 +41,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Strategos|EventModal")
 	void OpenEvent(FName EventId);
 
+	/** Variante com contexto completo — para eventos disparados via código ou chain. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|EventModal")
+	void OpenEventWithContext(FName EventId, const FEventContext& Context);
+
 	UFUNCTION(BlueprintCallable, Category = "Strategos|EventModal")
 	void ResolveChoice(int32 ChoiceIndex);
 
@@ -69,7 +74,11 @@ public:
 
 private:
 	UEventSubsystem* ResolveEvents() const;
+	UWorldState* ResolveWorldState() const;
+
+	void LoadEventInternal(FName EventId);
 
 	UPROPERTY() FName CurrentEventId;
 	UPROPERTY() TObjectPtr<UEventAsset> CurrentAsset;
+	UPROPERTY() FEventContext CurrentContext;
 };

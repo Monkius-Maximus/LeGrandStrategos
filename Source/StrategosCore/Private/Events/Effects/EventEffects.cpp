@@ -80,3 +80,55 @@ void UEffect_FireEvent::Apply_Implementation(UWorldState* WorldState, const FEve
 	NewCtx.TriggerTag = TEXT("Chain");
 	Events->FireEventById(EventId, NewCtx);
 }
+
+// ---------------------------------------------------------------------------
+// GetDescription — resumos legíveis para o modal de decisão.
+
+FText UEffect_AddGold::GetDescription_Implementation() const
+{
+	const FString Sign = Amount >= 0.f ? TEXT("+") : TEXT("-");
+	return FText::FromString(FString::Printf(TEXT("%s%.0f Ouro"), *Sign, FMath::Abs(Amount)));
+}
+
+FText UEffect_AddPopLoyalty::GetDescription_Implementation() const
+{
+	const FString Sign = Delta >= 0.f ? TEXT("+") : TEXT("-");
+	const int32 Pct = FMath::RoundToInt(FMath::Abs(Delta) * 100.f);
+
+	if (bAllStrata)
+	{
+		return FText::FromString(FString::Printf(TEXT("%s%d%% Lealdade (todos estratos)"), *Sign, Pct));
+	}
+
+	FString StratumLabel;
+	switch (Stratum)
+	{
+		case EPopStratum::Laborer:       StratumLabel = TEXT("Trabalhadores");  break;
+		case EPopStratum::Artisan:       StratumLabel = TEXT("Artesãos");       break;
+		case EPopStratum::FactoryWorker: StratumLabel = TEXT("Operários");      break;
+		case EPopStratum::Bourgeoisie:   StratumLabel = TEXT("Burguesia");      break;
+		case EPopStratum::Aristocracy:   StratumLabel = TEXT("Aristocracia");   break;
+		case EPopStratum::Soldier:       StratumLabel = TEXT("Soldados");       break;
+		case EPopStratum::Clergy:        StratumLabel = TEXT("Clero");          break;
+		default:                         StratumLabel = TEXT("?");              break;
+	}
+	return FText::FromString(FString::Printf(TEXT("%s%d%% Lealdade (%s)"), *Sign, Pct, *StratumLabel));
+}
+
+FText UEffect_AddGoodsToStockpile::GetDescription_Implementation() const
+{
+	TArray<FString> Parts;
+	for (const FGoodAmount& G : Goods)
+	{
+		const FString Sign = G.Amount >= 0.f ? TEXT("+") : TEXT("-");
+		Parts.Add(FString::Printf(TEXT("%s%.0f %s"), *Sign, FMath::Abs(G.Amount), *G.GoodId.ToString()));
+	}
+	return Parts.Num() > 0
+		? FText::FromString(FString::Join(Parts, TEXT(", ")))
+		: FText::GetEmpty();
+}
+
+FText UEffect_FireEvent::GetDescription_Implementation() const
+{
+	return FText::FromString(FString::Printf(TEXT("-> Evento: %s"), *EventId.ToString()));
+}

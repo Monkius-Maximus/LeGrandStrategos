@@ -3,6 +3,8 @@
 #include "Events/EventSubsystem.h"
 #include "Events/EventAsset.h"
 #include "Events/EventChoice.h"
+#include "Events/EventCondition.h"
+#include "Events/EventEffect.h"
 #include "World/WorldState.h"
 #include "World/Nation.h"
 #include "Game/StrategosGameState.h"
@@ -14,11 +16,18 @@ UEventSubsystem* UStrategosEventModalWidget::ResolveEvents() const
 	return W ? W->GetSubsystem<UEventSubsystem>() : nullptr;
 }
 
-void UStrategosEventModalWidget::OpenEvent(FName EventId)
+UWorldState* UStrategosEventModalWidget::ResolveWorldState() const
+{
+	const UWorld* W = GetWorld();
+	if (!W) return nullptr;
+	AStrategosGameState* GS = W->GetGameState<AStrategosGameState>();
+	return GS ? GS->GetWorldState() : nullptr;
+}
+
+void UStrategosEventModalWidget::LoadEventInternal(FName EventId)
 {
 	CurrentEventId = EventId;
 	CurrentAsset   = nullptr;
-
 	if (UEventSubsystem* Events = ResolveEvents())
 	{
 		CurrentAsset = Events->GetEventById(EventId);
@@ -26,18 +35,33 @@ void UStrategosEventModalWidget::OpenEvent(FName EventId)
 	OnEventLoaded(EventId);
 }
 
+void UStrategosEventModalWidget::OpenEvent(FName EventId)
+{
+	CurrentContext            = FEventContext{};
+	CurrentContext.EventId    = EventId;
+	if (const UWorldState* WS = ResolveWorldState())
+	{
+		CurrentContext.SourceNationId = WS->PlayerNationId;
+	}
+	LoadEventInternal(EventId);
+}
+
+void UStrategosEventModalWidget::OpenEventWithContext(FName EventId, const FEventContext& Context)
+{
+	CurrentContext         = Context;
+	CurrentContext.EventId = EventId;
+	LoadEventInternal(EventId);
+}
+
 void UStrategosEventModalWidget::ResolveChoice(int32 ChoiceIndex)
 {
 	UEventSubsystem* Events = ResolveEvents();
 	if (!Events || CurrentEventId.IsNone()) return;
 
-	const UWorld* W = GetWorld();
-	if (!W) return;
-	const AStrategosGameState* GS = W->GetGameState<AStrategosGameState>();
-	if (!GS || !GS->GetWorldState()) return;
+	const UWorldState* WS = ResolveWorldState();
+	if (!WS) return;
 
-	const FName PlayerNationId = GS->GetWorldState()->PlayerNationId;
-	Events->ResolveDecision(PlayerNationId, CurrentEventId, ChoiceIndex);
+	Events->ResolveDecision(WS->PlayerNationId, CurrentEventId, ChoiceIndex);
 	OnChoiceResolved(ChoiceIndex);
 }
 
@@ -54,8 +78,14 @@ FText UStrategosEventModalWidget::GetEventDescription() const
 FName UStrategosEventModalWidget::GetEventCategory() const
 {
 	if (!CurrentAsset) return NAME_None;
-	// EEventType only has Decision/Notification/Silent in current codebase.
-	// Category tag derived from event type; richer categorisation via tags in future.
+
+	// Category explícita no asset tem prioridade.
+	if (!CurrentAsset->Category.IsNone())
+	{
+		return CurrentAsset->Category;
+	}
+
+	// Fallback por Type para assets sem Category preenchida.
 	switch (CurrentAsset->Type)
 	{
 		case EEventType::Decision:     return FName("political");
@@ -79,17 +109,49 @@ TArray<FEventChoiceRow> UStrategosEventModalWidget::GetChoiceRows() const
 	TArray<FEventChoiceRow> Out;
 	if (!CurrentAsset) return Out;
 
+	UWorldState* WS = ResolveWorldState();
+
 	for (int32 i = 0; i < CurrentAsset->Choices.Num(); ++i)
 	{
 		const FEventChoice& C = CurrentAsset->Choices[i];
 		FEventChoiceRow R;
-		R.ChoiceIndex    = i;
-		R.Label          = C.Label;
-		R.Tooltip        = C.Tooltip;
-		// EffectsPreview built from Effects array count; rich description deferred to future
-		R.EffectsPreview = FText::Format(
-			NSLOCTEXT("EventModal","EffectCount","{0} efeito(s)"), FText::AsNumber(C.Effects.Num()));
-		R.bAvailable     = true; // condition evaluation deferred to EventSubsystem
+		R.ChoiceIndex = i;
+		R.Label       = C.Label;
+		R.bAvailable  = true;
+
+		// Avaliar condições de disponibilidade da choice.
+		for (const TObjectPtr<UEventCondition>& CondPtr : C.AvailabilityConditions)
+		{
+			UEventCondition* Cond = CondPtr.Get();
+			if (Cond && !Cond->Evaluate(WS, CurrentContext))
+			{
+				R.bAvailable = false;
+				break;
+			}
+		}
+
+		// Tooltip: usa UnavailableTooltip quando bloqueada, Tooltip padrão quando disponível.
+		R.Tooltip = (!R.bAvailable && !C.UnavailableTooltip.IsEmpty())
+			? C.UnavailableTooltip
+			: C.Tooltip;
+
+		// EffectsPreview: GetDescription() de cada efeito, separados por ", ".
+		TArray<FString> Parts;
+		for (const TObjectPtr<UEventEffect>& EffPtr : C.Effects)
+		{
+			if (UEventEffect* Eff = EffPtr.Get())
+			{
+				const FText Desc = Eff->GetDescription();
+				if (!Desc.IsEmpty())
+				{
+					Parts.Add(Desc.ToString());
+				}
+			}
+		}
+		R.EffectsPreview = Parts.Num() > 0
+			? FText::FromString(FString::Join(Parts, TEXT(", ")))
+			: FText::GetEmpty();
+
 		Out.Add(R);
 	}
 	return Out;

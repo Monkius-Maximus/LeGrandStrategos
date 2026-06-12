@@ -193,6 +193,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Description = NSLOCTEXT("Strategos", "BountifulHarvest_D",
 			"Favorable weather brings an exceptional harvest. Granaries swell.");
 		E->Type = EEventType::Notification;
+		E->Category = TEXT("economic");
 		E->TriggerTag = TEXT("Time.Year");
 		E->MeanTimeToHappenMonths = 6;
 		E->AutoEffects.Add(MakeEffect_AddGoods({ { TEXT("Grain"), 200.f }, { TEXT("Bread"), 100.f } }));
@@ -208,6 +209,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Description = NSLOCTEXT("Strategos", "WorkerStrike_D",
 			"Factory workers down their tools, demanding better conditions.");
 		E->Type = EEventType::Notification;
+		E->Category = TEXT("political");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 4;
 		UCondition_LoyaltyBelow* C = NewObject<UCondition_LoyaltyBelow>(this);
@@ -227,6 +229,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Description = NSLOCTEXT("Strategos", "ForeignInvestor_D",
 			"A wealthy foreigner offers capital in exchange for trade concessions.");
 		E->Type = EEventType::Decision;
+		E->Category = TEXT("economic");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 24;
 
@@ -252,6 +255,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Description = NSLOCTEXT("Strategos", "FP_D",
 			"With granaries full, citizens petition for a public festival.");
 		E->Type = EEventType::Decision;
+		E->Category = TEXT("political");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 12;
 
@@ -282,6 +286,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Description = NSLOCTEXT("Strategos", "BR_D",
 			"Brigands raid a remote province, looting what they can carry.");
 		E->Type = EEventType::Notification;
+		E->Category = TEXT("military");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 18;
 		E->AutoEffects.Add(MakeEffect_AddGold(-30.f));
@@ -294,6 +299,22 @@ void UEventSubsystem::RegisterFallbackEvents()
 
 	UE_LOG(LogStrategosCore, Log, TEXT("EventSubsystem: registered %d fallback events."),
 		FallbackEvents.Num());
+}
+
+void UEventSubsystem::RegisterEphemeralEvent(UEventAsset* Event)
+{
+	if (!Event || Event->Id.IsNone()) return;
+	EventById.Add(Event->Id, Event);
+	TArray<TObjectPtr<UEventAsset>>& Bucket = EventsByTrigger.FindOrAdd(Event->TriggerTag);
+	if (!Bucket.Contains(Event))
+	{
+		Bucket.Add(Event);
+	}
+	Bucket.Sort([](const TObjectPtr<UEventAsset>& A, const TObjectPtr<UEventAsset>& B)
+	{
+		return A && B ? A->Id.LexicalLess(B->Id) : false;
+	});
+	UE_LOG(LogStrategosCore, Log, TEXT("EventSubsystem: evento efêmero '%s' registrado."), *Event->Id.ToString());
 }
 
 UEventAsset* UEventSubsystem::GetEventById(FName EventId) const

@@ -20,6 +20,7 @@ public:
 	float Amount = 0.f;
 
 	virtual void Apply_Implementation(UWorldState* WorldState, const FEventContext& Context) override;
+	virtual FText GetDescription_Implementation() const override;
 };
 
 /** Soma Delta na Loyalty de todos POPs do estrato em todas províncias da nação. */
@@ -43,6 +44,7 @@ public:
 	bool bAllStrata = false;
 
 	virtual void Apply_Implementation(UWorldState* WorldState, const FEventContext& Context) override;
+	virtual FText GetDescription_Implementation() const override;
 };
 
 /** Adiciona/remove uma lista de bens ao Stockpile da nação. */
@@ -60,6 +62,7 @@ public:
 	TArray<FGoodAmount> Goods;
 
 	virtual void Apply_Implementation(UWorldState* WorldState, const FEventContext& Context) override;
+	virtual FText GetDescription_Implementation() const override;
 };
 
 /** Encadeia outro evento — permite narrativas multi-passo via DataAssets. */
@@ -76,4 +79,5 @@ public:
 	FName TargetNationId;
 
 	virtual void Apply_Implementation(UWorldState* WorldState, const FEventContext& Context) override;
+	virtual FText GetDescription_Implementation() const override;
 };

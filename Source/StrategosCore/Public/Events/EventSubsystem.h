@@ -66,6 +66,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
 	UEventAsset* GetEventById(FName EventId) const;
 
+	/**
+	 * Registra um evento efêmero sem substituir o ContentRegistry.
+	 * Usado por debug e encadeamentos em runtime. Não sobrevive a RebuildIndex().
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
+	void RegisterEphemeralEvent(UEventAsset* Event);
+
 	/** Dispara manualmente um evento por Id (chaining ou debug). */
 	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
 	void FireEventById(FName EventId, const FEventContext& Context);
