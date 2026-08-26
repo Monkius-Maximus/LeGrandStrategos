@@ -8,6 +8,7 @@
 #include "Economy/BuildingOwnerKind.h"
 #include "Economy/StrategicIndices.h"
 #include "Events/EventContext.h"
+#include "Events/EventHistory.h"
 #include "World/ArmyStats.h"
 #include "Diplomacy/DiplomaticRelation.h"
 #include "StrategosSaveData.generated.h"
@@ -104,12 +105,15 @@ struct FArmyRecord
 /**
  * UStrategosSaveData — snapshot serializável do estado do mundo.
  *
- * SaveVersion = 6 (Recursos e Produção, Sessão 1):
- *  - FProvinceRecord.Geography: geografia natural em 4 eixos (topografia/clima/
- *    vegetação/hidrografia). Substitui o antigo campo Terrain (ETerrainType),
- *    que agora é derivado em runtime via UProvince::GetTerrain().
+ * SaveVersion = 7 (Events: memória de disparo):
+ *  - EventHistory: log de eventos disparados (com a escolha feita, quando houver)
+ *  - NationEventStates: por nação, quais eventos já dispararam e cooldowns ativos
+ *  - GlobalFiredEventIds: eventos OnceGlobal que já ocorreram na partida
+ *  Sem esses três, recarregar um save reabria eventos únicos e zerava cooldowns.
  *
  * Versões anteriores:
+ *  - 6: FProvinceRecord.Geography (geografia natural em 4 eixos, substituindo
+ *       o antigo campo Terrain, hoje derivado via UProvince::GetTerrain())
  *  - 5: DiplomaticRelations (matriz esparsa N×N de FDiplomaticRelation)
  *  - 4: identidade visual de Nation + expansão de Army (stats, modifiers, state, XP)
  *  - 3: pending decisions de Events
@@ -134,7 +138,7 @@ class STRATEGOSCORE_API UStrategosSaveData : public USaveGame
 	GENERATED_BODY()
 
 public:
-	UPROPERTY() int32 SaveVersion = 6;
+	UPROPERTY() int32 SaveVersion = 7;
 	UPROPERTY() FDateTime CurrentDate;
 	UPROPERTY() FName PlayerNationId;
 	UPROPERTY() TArray<FNationRecord> Nations;
@@ -142,4 +146,9 @@ public:
 	UPROPERTY() TArray<FArmyRecord> Armies;
 	UPROPERTY() TArray<FPendingDecisionRecord> PendingDecisions;
 	UPROPERTY() TArray<FDiplomaticRelation> DiplomaticRelations;
+
+	// SaveVersion 7: memória de disparo de eventos.
+	UPROPERTY() TArray<FFiredEventRecord> EventHistory;
+	UPROPERTY() TArray<FNationEventStateRecord> NationEventStates;
+	UPROPERTY() TArray<FName> GlobalFiredEventIds;
 };

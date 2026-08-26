@@ -64,10 +64,17 @@ void UEffect_FireEvent::Apply_Implementation(UWorldState* WorldState, const FEve
 {
 	if (EventId.IsNone()) return;
 
-	UWorld* World = nullptr;
-	if (UObject* Outer = GetOuter())
+	// WorldState primeiro: seu outer é o AStrategosGameState (um Actor), então
+	// GetWorld() resolve. Effects carregados de um UEventAsset do editor têm o
+	// próprio DataAsset como outer, que não tem mundo — a cadeia morreria em
+	// silêncio se dependêssemos só do outer.
+	UWorld* World = WorldState ? WorldState->GetWorld() : nullptr;
+	if (!World)
 	{
-		World = Outer->GetWorld();
+		if (UObject* Outer = GetOuter())
+		{
+			World = Outer->GetWorld();
+		}
 	}
 	if (!World) return;
 

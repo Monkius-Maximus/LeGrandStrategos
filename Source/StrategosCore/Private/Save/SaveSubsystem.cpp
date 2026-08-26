@@ -177,6 +177,28 @@ UStrategosSaveData* USaveSubsystem::CaptureSnapshot() const
 					Snapshot->PendingDecisions.Add(R);
 				}
 			}
+
+			// SaveVersion 7: memória de disparo (Once/Cooldown/histórico). Sem
+			// isso, recarregar reabriria eventos únicos e zeraria cooldowns.
+			Snapshot->EventHistory = Events->GetHistory();
+
+			for (const auto& StatePair : Events->GetNationStatesRaw())
+			{
+				FNationEventStateRecord SR;
+				SR.NationId = StatePair.Key;
+				SR.EverFiredEventIds = StatePair.Value.EverFired.Array();
+
+				for (const auto& CooldownPair : StatePair.Value.CooldownUntil)
+				{
+					FEventCooldownRecord CR;
+					CR.EventId = CooldownPair.Key;
+					CR.Until   = CooldownPair.Value;
+					SR.Cooldowns.Add(CR);
+				}
+				Snapshot->NationEventStates.Add(SR);
+			}
+
+			Snapshot->GlobalFiredEventIds = Events->GetGlobalFiredRaw().Array();
 		}
 
 		// Diplomatic relations.
@@ -317,6 +339,31 @@ bool USaveSubsystem::ApplySnapshot(const UStrategosSaveData& Snapshot)
 				Restored.FindOrAdd(R.NationId).Add(P);
 			}
 			Events->RestorePendingDecisions(Restored);
+
+			// SaveVersion 7. Saves anteriores trazem os arrays vazios, o que
+			// restaura estado limpo — mesmo comportamento de antes do campo existir.
+			TMap<FName, FNationEventState> RestoredStates;
+			for (const FNationEventStateRecord& SR : Snapshot.NationEventStates)
+			{
+				FNationEventState State;
+				for (const FName& Id : SR.EverFiredEventIds)
+				{
+					State.EverFired.Add(Id);
+				}
+				for (const FEventCooldownRecord& CR : SR.Cooldowns)
+				{
+					State.CooldownUntil.Add(CR.EventId, CR.Until);
+				}
+				RestoredStates.Add(SR.NationId, MoveTemp(State));
+			}
+
+			TSet<FName> RestoredGlobal;
+			for (const FName& Id : Snapshot.GlobalFiredEventIds)
+			{
+				RestoredGlobal.Add(Id);
+			}
+
+			Events->RestoreHistory(Snapshot.EventHistory, RestoredStates, RestoredGlobal);
 		}
 
 		if (UDiplomacySubsystem* Diplomacy = GameWorld->GetSubsystem<UDiplomacySubsystem>())

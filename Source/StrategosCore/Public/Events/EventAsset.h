@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Events/EventType.h"
+#include "Events/EventRepeatPolicy.h"
 #include "Events/EventCondition.h"
 #include "Events/EventEffect.h"
 #include "Events/EventChoice.h"
@@ -59,6 +60,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event|Trigger", meta = (ClampMin = "0"))
 	int32 MeanTimeToHappenMonths = 0;
+
+	/** Quantas vezes pode disparar. Default Always mantém o comportamento antigo. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event|Trigger")
+	EEventRepeatPolicy RepeatPolicy = EEventRepeatPolicy::Always;
+
+	/** Só usado quando RepeatPolicy == Cooldown. Dias antes de poder repetir. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Event|Trigger",
+		meta = (ClampMin = "0", EditCondition = "RepeatPolicy == EEventRepeatPolicy::Cooldown"))
+	int32 CooldownDays = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Instanced, Category = "Event")
 	TArray<TObjectPtr<UEventCondition>> Conditions;

@@ -9,6 +9,7 @@
 #include "World/WorldState.h"
 #include "World/Nation.h"
 #include "World/Province.h"
+#include "Economy/Building.h"
 #include "Game/StrategosGameState.h"
 #include "Foundation/Time/TimeSubsystem.h"
 #include "Strategy/MilitarySubsystem.h"
@@ -39,6 +40,10 @@ void UEventSubsystem::Deinitialize()
 	EventById.Empty();
 	EventsByTrigger.Empty();
 	FallbackEvents.Empty();
+	PendingByNation.Empty();
+	StateByNation.Empty();
+	GlobalEverFired.Empty();
+	History.Empty();
 	Super::Deinitialize();
 }
 
@@ -196,6 +201,8 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Category = TEXT("economic");
 		E->TriggerTag = TEXT("Time.Year");
 		E->MeanTimeToHappenMonths = 6;
+		E->RepeatPolicy = EEventRepeatPolicy::Cooldown;
+		E->CooldownDays = 365;
 		E->AutoEffects.Add(MakeEffect_AddGoods({ { TEXT("Grain"), 200.f }, { TEXT("Bread"), 100.f } }));
 		E->AutoEffects.Add(MakeEffect_AddLoyalty(EPopStratum::Laborer, 0.05f, false));
 		FallbackEvents.Add(E);
@@ -212,6 +219,8 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Category = TEXT("political");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 4;
+		E->RepeatPolicy = EEventRepeatPolicy::Cooldown;
+		E->CooldownDays = 180;
 		UCondition_LoyaltyBelow* C = NewObject<UCondition_LoyaltyBelow>(this);
 		C->Stratum = EPopStratum::FactoryWorker;
 		C->Threshold = 0.6f;
@@ -232,6 +241,7 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Category = TEXT("economic");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 24;
+		E->RepeatPolicy = EEventRepeatPolicy::OncePerNation;
 
 		FEventChoice Accept;
 		Accept.Label = NSLOCTEXT("Strategos", "FI_Accept", "Accept the offer (+500g, -loyalty Bourgeoisie)");
@@ -258,6 +268,8 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Category = TEXT("political");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 12;
+		E->RepeatPolicy = EEventRepeatPolicy::Cooldown;
+		E->CooldownDays = 365;
 
 		UCondition_HasGoodInStockpile* C = NewObject<UCondition_HasGoodInStockpile>(this);
 		C->GoodId = TEXT("Bread");
@@ -289,6 +301,8 @@ void UEventSubsystem::RegisterFallbackEvents()
 		E->Category = TEXT("military");
 		E->TriggerTag = TEXT("Time.Month");
 		E->MeanTimeToHappenMonths = 18;
+		E->RepeatPolicy = EEventRepeatPolicy::Cooldown;
+		E->CooldownDays = 90;
 		E->AutoEffects.Add(MakeEffect_AddGold(-30.f));
 		E->AutoEffects.Add(MakeEffect_AddGoods({
 			{ TEXT("Grain"), -20.f },
@@ -323,7 +337,7 @@ UEventAsset* UEventSubsystem::GetEventById(FName EventId) const
 	return P ? P->Get() : nullptr;
 }
 
-void UEventSubsystem::FireEventById(FName EventId, const FEventContext& Context)
+void UEventSubsystem::FireEventById(FName EventId, const FEventContext& Context, bool bBypassRepeatPolicy)
 {
 	UEventAsset* E = GetEventById(EventId);
 	if (!E) return;
@@ -331,17 +345,136 @@ void UEventSubsystem::FireEventById(FName EventId, const FEventContext& Context)
 	FEventContext Ctx = Context;
 	Ctx.EventId = E->Id;
 
+	if (!bBypassRepeatPolicy && !CanEventFire(E, Ctx)) return;
 	if (!EvaluateConditions(*E, Ctx)) return;
 
-	if (E->Type == EEventType::Decision)
+	DispatchResolved(*E, Ctx);
+}
+
+// ----------------------------------------------------------------------------
+// Política de repetição + histórico.
+
+bool UEventSubsystem::CanEventFire(const UEventAsset* Event, const FEventContext& Context) const
+{
+	if (!Event) return false;
+
+	switch (Event->RepeatPolicy)
 	{
-		EnqueueOrAutoResolve(*E, Ctx);
+		case EEventRepeatPolicy::Always:
+		{
+			return true;
+		}
+		case EEventRepeatPolicy::OnceGlobal:
+		{
+			return !GlobalEverFired.Contains(Event->Id);
+		}
+		case EEventRepeatPolicy::OncePerNation:
+		{
+			const FNationEventState* S = StateByNation.Find(Context.SourceNationId);
+			return !S || !S->EverFired.Contains(Event->Id);
+		}
+		case EEventRepeatPolicy::Cooldown:
+		{
+			const FNationEventState* S = StateByNation.Find(Context.SourceNationId);
+			if (!S) return true;
+			const FDateTime* Until = S->CooldownUntil.Find(Event->Id);
+			return !Until || Context.FireDate >= *Until;
+		}
+	}
+	return true;
+}
+
+void UEventSubsystem::DispatchResolved(UEventAsset& Event, const FEventContext& Context)
+{
+	// Registra antes de aplicar efeitos: um Effect_FireEvent que reentre neste
+	// mesmo evento precisa enxergar o registro para respeitar Once/Cooldown,
+	// senão uma cadeia cíclica recursa até estourar a pilha.
+	RecordFired(Event, Context);
+
+	if (Event.Type == EEventType::Decision)
+	{
+		EnqueueOrAutoResolve(Event, Context);
 	}
 	else
 	{
-		ApplyAutoEffects(*E, Ctx);
-		OnEventFired.Broadcast(Ctx);
+		ApplyAutoEffects(Event, Context);
+		OnEventFired.Broadcast(Context);
 	}
+}
+
+void UEventSubsystem::RecordFired(const UEventAsset& Event, const FEventContext& Context)
+{
+	FNationEventState& State = StateByNation.FindOrAdd(Context.SourceNationId);
+	State.EverFired.Add(Event.Id);
+
+	if (Event.RepeatPolicy == EEventRepeatPolicy::OnceGlobal)
+	{
+		GlobalEverFired.Add(Event.Id);
+	}
+	else if (Event.RepeatPolicy == EEventRepeatPolicy::Cooldown && Event.CooldownDays > 0)
+	{
+		State.CooldownUntil.Add(Event.Id,
+			Context.FireDate + FTimespan::FromDays(Event.CooldownDays));
+	}
+
+	FFiredEventRecord Rec;
+	Rec.EventId     = Event.Id;
+	Rec.NationId    = Context.SourceNationId;
+	Rec.FireDate    = Context.FireDate;
+	Rec.ChoiceIndex = INDEX_NONE;
+	AppendHistory(Rec);
+}
+
+void UEventSubsystem::RecordChoice(FName EventId, FName NationId, int32 ChoiceIndex)
+{
+	// Do mais recente para o mais antigo: a Decision resolvida agora é a última
+	// ocorrência ainda sem escolha registrada.
+	for (int32 i = History.Num() - 1; i >= 0; --i)
+	{
+		FFiredEventRecord& R = History[i];
+		if (R.EventId == EventId && R.NationId == NationId && R.ChoiceIndex == INDEX_NONE)
+		{
+			R.ChoiceIndex = ChoiceIndex;
+			return;
+		}
+	}
+}
+
+void UEventSubsystem::AppendHistory(const FFiredEventRecord& Record)
+{
+	History.Add(Record);
+	if (History.Num() > MaxHistoryEntries)
+	{
+		History.RemoveAt(0, History.Num() - MaxHistoryEntries);
+	}
+}
+
+bool UEventSubsystem::HasEventEverFired(FName EventId, FName NationId) const
+{
+	const FNationEventState* S = StateByNation.Find(NationId);
+	return S && S->EverFired.Contains(EventId);
+}
+
+int32 UEventSubsystem::GetLastChoiceFor(FName EventId, FName NationId) const
+{
+	for (int32 i = History.Num() - 1; i >= 0; --i)
+	{
+		const FFiredEventRecord& R = History[i];
+		if (R.EventId == EventId && R.NationId == NationId && R.ChoiceIndex != INDEX_NONE)
+		{
+			return R.ChoiceIndex;
+		}
+	}
+	return INDEX_NONE;
+}
+
+void UEventSubsystem::RestoreHistory(const TArray<FFiredEventRecord>& InHistory,
+	const TMap<FName, FNationEventState>& InStates,
+	const TSet<FName>& InGlobalFired)
+{
+	History         = InHistory;
+	StateByNation   = InStates;
+	GlobalEverFired = InGlobalFired;
 }
 
 // ----------------------------------------------------------------------------
@@ -375,7 +508,11 @@ bool UEventSubsystem::HasPendingDecisions(FName NationId) const
 
 EDecisionResolveResult UEventSubsystem::ResolveDecision(FName NationId, FName EventId, int32 ChoiceIndex)
 {
-	TArray<FPendingDecision>* Pending = PendingByNation.Find(NationId);
+	// Mesma resolução de NAME_None que GetPendingDecisions/HasPendingDecisions
+	// usam; sem isso, resolver o que o getter acabou de devolver falharia.
+	const FName Target = ResolveQueryNation(NationId, ResolveWorldState());
+
+	TArray<FPendingDecision>* Pending = PendingByNation.Find(Target);
 	if (!Pending) return EDecisionResolveResult::NoSuchDecision;
 
 	const int32 Idx = Pending->IndexOfByPredicate([&](const FPendingDecision& P)
@@ -395,11 +532,12 @@ EDecisionResolveResult UEventSubsystem::ResolveDecision(FName NationId, FName Ev
 	const FEventContext Ctx = (*Pending)[Idx].Context;
 	Pending->RemoveAt(Idx);
 
+	RecordChoice(EventId, Target, ChoiceIndex);
 	ApplyChoiceEffects(Event->Choices[ChoiceIndex], Ctx);
 	OnDecisionResolved.Broadcast(Ctx, ChoiceIndex);
 
 	UE_LOG(LogStrategosCore, Log, TEXT("Decision %s resolved by %s with choice %d"),
-		*EventId.ToString(), *NationId.ToString(), ChoiceIndex);
+		*EventId.ToString(), *Target.ToString(), ChoiceIndex);
 	return EDecisionResolveResult::Ok;
 }
 
@@ -443,6 +581,7 @@ void UEventSubsystem::EnqueueOrAutoResolve(UEventAsset& Event, const FEventConte
 	else
 	{
 		const int32 Pick = PickAIChoice(Event, Context);
+		RecordChoice(Event.Id, Context.SourceNationId, Pick);
 		ApplyChoiceEffects(Event.Choices[Pick], Context);
 		OnDecisionResolved.Broadcast(Context, Pick);
 	}
@@ -512,20 +651,15 @@ void UEventSubsystem::DispatchTrigger(FName TriggerTag, const FEventContext& Bas
 		Ctx.EventId = E->Id;
 		Ctx.TriggerTag = TriggerTag;
 
+		// Gate de repetição antes das conditions: é a rejeição mais barata e
+		// significa "este evento nem é elegível", não "as condições falharam".
+		if (!CanEventFire(E, Ctx)) continue;
 		if (!EvaluateConditions(*E, Ctx)) continue;
 		if (!RollMTTH(E->Id, Ctx, E->MeanTimeToHappenMonths)) continue;
 
-		if (E->Type == EEventType::Decision)
-		{
-			EnqueueOrAutoResolve(*E, Ctx);
-		}
-		else
-		{
-			ApplyAutoEffects(*E, Ctx);
-			OnEventFired.Broadcast(Ctx);
-			UE_LOG(LogStrategosCore, Verbose, TEXT("Event fired: %s on %s"),
-				*E->Id.ToString(), *Ctx.SourceNationId.ToString());
-		}
+		DispatchResolved(*E, Ctx);
+		UE_LOG(LogStrategosCore, Verbose, TEXT("Event fired: %s on %s"),
+			*E->Id.ToString(), *Ctx.SourceNationId.ToString());
 	}
 }
 
@@ -582,6 +716,32 @@ void UEventSubsystem::HandleBuildingCompleted(FName BuildingId)
 {
 	FEventContext Ctx;
 	Ctx.SourceEntityId = BuildingId;
+
+	// O delegate só carrega o BuildingId, mas conditions e effects resolvem
+	// NationId vazio para Context.SourceNationId. Sem preencher aqui, todo
+	// evento neste trigger apontaria para nação nenhuma e viraria no-op.
+	if (const UWorldState* World = ResolveWorldState())
+	{
+		for (const auto& Pair : World->Provinces)
+		{
+			const UProvince* Prov = Pair.Value.Get();
+			if (!Prov) continue;
+
+			const bool bHasBuilding = Prov->Buildings.ContainsByPredicate(
+				[BuildingId](const TObjectPtr<UBuilding>& B)
+				{
+					return B && B->Id == BuildingId;
+				});
+
+			if (bHasBuilding)
+			{
+				Ctx.SourceProvinceId = Prov->Id;
+				Ctx.SourceNationId   = Prov->OwnerNationId;
+				break;
+			}
+		}
+	}
+
 	if (UTimeSubsystem* Time = ResolveTime()) Ctx.FireDate = Time->GetCurrentDate();
 	DispatchTrigger(EventTriggers::EconomyBuildingCompleted, Ctx);
 }

@@ -638,7 +638,7 @@ void UEventDebugSubsystem::FireEventDebug(FName EventId, FName NationId)
 	Ctx.TriggerTag     = TEXT("Debug");
 	StampFireDate(GetWorld(), Ctx);
 
-	Events->FireEventById(EventId, Ctx);
+	Events->FireEventById(EventId, Ctx, /*bBypassRepeatPolicy*/ true);
 	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] FireEvent '%s' -> '%s'"),
 		*EventId.ToString(), *NationId.ToString());
 	RefreshDebugUI();
@@ -658,7 +658,7 @@ void UEventDebugSubsystem::CreateAndFireTestDecision(FName CustomEventId, FName 
 	Ctx.TriggerTag     = TEXT("Debug.Manual");
 	StampFireDate(GetWorld(), Ctx);
 
-	Events->FireEventById(CustomEventId, Ctx);
+	Events->FireEventById(CustomEventId, Ctx, /*bBypassRepeatPolicy*/ true);
 	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] CreateAndFireTestDecision '%s' -> '%s'"),
 		*CustomEventId.ToString(), *NationId.ToString());
 	RefreshDebugUI();
@@ -719,7 +719,7 @@ bool UEventDebugSubsystem::TestSaveLoadPersistence(FName CustomEventId, FName Na
 	Ctx.SourceNationId = NationId;
 	Ctx.TriggerTag     = TEXT("Debug.Manual");
 	StampFireDate(GetWorld(), Ctx);
-	Events->FireEventById(CustomEventId, Ctx);
+	Events->FireEventById(CustomEventId, Ctx, /*bBypassRepeatPolicy*/ true);
 
 	// 3. Sem enfileirar nao ha o que testar — o ciclo passaria trivialmente.
 	if (!Events->HasPendingDecisions(NationId))

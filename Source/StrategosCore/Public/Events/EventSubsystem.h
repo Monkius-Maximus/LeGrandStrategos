@@ -4,6 +4,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "Events/EventContext.h"
 #include "Events/EventChoice.h"
+#include "Events/EventHistory.h"
 #include "EventSubsystem.generated.h"
 
 class UEventAsset;
@@ -73,9 +74,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
 	void RegisterEphemeralEvent(UEventAsset* Event);
 
-	/** Dispara manualmente um evento por Id (chaining ou debug). */
+	/**
+	 * Dispara manualmente um evento por Id (chaining ou debug).
+	 * bBypassRepeatPolicy ignora Once/Cooldown — use apenas em debug.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Strategos|Events")
-	void FireEventById(FName EventId, const FEventContext& Context);
+	void FireEventById(FName EventId, const FEventContext& Context, bool bBypassRepeatPolicy = false);
+
+	/** False se RepeatPolicy (Once/Cooldown) bloqueia este evento para esta nação agora. */
+	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
+	bool CanEventFire(const UEventAsset* Event, const FEventContext& Context) const;
 
 	// --- Decision queue ----------------------------------------------------
 
@@ -99,6 +107,27 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Strategos|Events")
 	FOnDecisionResolved OnDecisionResolved;
 
+	// --- História ----------------------------------------------------------
+
+	/**
+	 * Log de disparos, do mais antigo ao mais recente. Tem teto de tamanho.
+	 * Sem UFUNCTION: Blueprint não aceita retorno por referência, e copiar
+	 * centenas de records a cada chamada não vale o acesso em BP.
+	 */
+	const TArray<FFiredEventRecord>& GetHistory() const { return History; }
+
+	/** True se o evento já disparou para essa nação em qualquer momento da partida. */
+	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
+	bool HasEventEverFired(FName EventId, FName NationId) const;
+
+	/**
+	 * Índice da escolha feita no disparo mais recente desse evento para essa nação.
+	 * INDEX_NONE se nunca disparou, se ainda não foi resolvido, ou se o registro
+	 * já saiu do log por limite de tamanho.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Strategos|Events")
+	int32 GetLastChoiceFor(FName EventId, FName NationId) const;
+
 	// --- Save/Load support -------------------------------------------------
 
 	/** Snapshot da fila de decisões pendentes (serialização). */
@@ -106,6 +135,14 @@ public:
 
 	/** Restaura a fila a partir de records carregados. Substitui estado atual. */
 	void RestorePendingDecisions(const TMap<FName, TArray<FPendingDecision>>& Pending);
+
+	const TMap<FName, FNationEventState>& GetNationStatesRaw() const { return StateByNation; }
+	const TSet<FName>& GetGlobalFiredRaw() const { return GlobalEverFired; }
+
+	/** Restaura história e memória de disparos. Substitui estado atual. */
+	void RestoreHistory(const TArray<FFiredEventRecord>& InHistory,
+		const TMap<FName, FNationEventState>& InStates,
+		const TSet<FName>& InGlobalFired);
 
 protected:
 	UFUNCTION()
@@ -137,6 +174,17 @@ protected:
 
 	int32 PickAIChoice(const UEventAsset& Event, const FEventContext& Context) const;
 
+	/** Caminho único de disparo: registra a ocorrência e despacha por Type. */
+	void DispatchResolved(UEventAsset& Event, const FEventContext& Context);
+
+	/** Grava o disparo em EverFired/cooldown/history. */
+	void RecordFired(const UEventAsset& Event, const FEventContext& Context);
+
+	/** Preenche o ChoiceIndex do registro pendente mais recente desse evento. */
+	void RecordChoice(FName EventId, FName NationId, int32 ChoiceIndex);
+
+	void AppendHistory(const FFiredEventRecord& Record);
+
 private:
 	void RebuildIndex();
 	void RegisterFallbackEvents();
@@ -166,4 +214,23 @@ private:
 	/** Pending decisions por nação. Ordem: FIFO. */
 	UPROPERTY()
 	TMap<FName, TArray<FPendingDecision>> PendingByNation;
+
+	/** Memória de disparos por nação (Once/Cooldown). */
+	UPROPERTY()
+	TMap<FName, FNationEventState> StateByNation;
+
+	/** Eventos com RepeatPolicy OnceGlobal que já dispararam. */
+	UPROPERTY()
+	TSet<FName> GlobalEverFired;
+
+	/** Log de disparos, mais antigo primeiro. Truncado em MaxHistoryEntries. */
+	UPROPERTY()
+	TArray<FFiredEventRecord> History;
+
+	/**
+	 * Teto do log. Uma campanha de 60 anos com eventos mensais em várias nações
+	 * geraria milhares de entradas; o log serve para consulta recente e vai
+	 * inteiro para o save. EverFired cobre as consultas de longo prazo.
+	 */
+	static constexpr int32 MaxHistoryEntries = 512;
 };
