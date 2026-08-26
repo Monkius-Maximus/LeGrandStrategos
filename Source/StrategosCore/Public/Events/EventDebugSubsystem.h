@@ -7,6 +7,7 @@
 
 class UEventSubsystem;
 class USaveSubsystem;
+class SWidget;
 
 /**
  * UEventDebugSubsystem — Comandos de console para inspecionar e testar o sistema de eventos.
@@ -57,6 +58,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Strategos|Debug")
 	void ToggleDebugUI();
 
+	/** Repopula a lista de decisions do overlay, se ele estiver visível. */
+	UFUNCTION(BlueprintCallable, Category = "Strategos|Debug")
+	void RefreshDebugUI();
+
 private:
 	void RegisterConsoleCommands();
 	void UnregisterConsoleCommands();
@@ -71,4 +76,7 @@ private:
 	USaveSubsystem*  ResolveSaveSubsystem()  const;
 
 	TArray<IConsoleObject*> ConsoleObjects;
+
+	/** Overlay ativo. Não é UPROPERTY: SWidget não é UObject. */
+	TSharedPtr<SWidget> DebugOverlay;
 };

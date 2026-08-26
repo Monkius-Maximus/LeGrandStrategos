@@ -16,35 +16,40 @@
 // Slate
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SOverlay.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SSeparator.h"
-#include "Styling/SlateTypes.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateBrush.h"
+#include "Styling/SlateColor.h"
 
 // ---------------------------------------------------------------------------
-// Slate overlay — definido aqui para não exportar tipos Slate no header público.
+// Overlay Slate — definido no .cpp para não expor tipos Slate no header público.
 
 namespace
 {
-	// Pincel sólido reutilizável para o fundo escuro do painel.
-	const FSlateBrush* GetDarkBrush()
+	// Brushes e cores como estáticos de função: Slate guarda ponteiro cru para
+	// FSlateBrush, então o objeto precisa sobreviver ao Construct().
+	const FSlateBrush* PanelBrush()
 	{
 		static FSlateColorBrush Brush(FLinearColor(0.04f, 0.04f, 0.06f, 0.93f));
 		return &Brush;
 	}
 
-	const FSlateBrush* GetSeparatorBrush()
+	const FSlateBrush* RuleBrush()
 	{
-		static FSlateColorBrush Brush(FLinearColor(0.2f, 0.2f, 0.22f, 1.f));
+		static FSlateColorBrush Brush(FLinearColor(0.20f, 0.20f, 0.22f, 1.f));
 		return &Brush;
 	}
+
+	const FSlateColor ColText  { FLinearColor(0.85f, 0.85f, 0.85f) };
+	const FSlateColor ColDim   { FLinearColor(0.50f, 0.50f, 0.50f) };
+	const FSlateColor ColTitle { FLinearColor(1.00f, 0.72f, 0.00f) };
+	const FSlateColor ColItem  { FLinearColor(0.90f, 0.90f, 0.70f) };
+	const FSlateColor ColLog   { FLinearColor(0.65f, 0.88f, 0.65f) };
 }
 
 class SEventDebugOverlay : public SCompoundWidget
@@ -61,6 +66,9 @@ public:
 	void RefreshDecisions();
 
 private:
+	/** Lê os dois campos de texto. Retorna false e loga se algum estiver vazio. */
+	bool ReadIds(FName& OutEventId, FName& OutNationId);
+
 	FReply OnFireClicked();
 	FReply OnCreateTestClicked();
 	FReply OnTestPersistenceClicked();
@@ -84,165 +92,154 @@ void SEventDebugOverlay::Construct(const FArguments& InArgs)
 	DebugSys = InArgs._DebugSys;
 	World    = InArgs._World;
 
-	const FTextBlockStyle BodyStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)));
-
-	const FTextBlockStyle DimStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)));
-
-	const FTextBlockStyle TitleStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 0.72f, 0.f)));
-
-	const FTextBlockStyle ItemStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.9f, 0.9f, 0.7f)));
-
-	const FTextBlockStyle LogStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.65f, 0.88f, 0.65f)));
+	const FSlateFontInfo FontBody  = FCoreStyle::GetDefaultFontStyle("Regular", 9);
+	const FSlateFontInfo FontTitle = FCoreStyle::GetDefaultFontStyle("Bold", 10);
+	const FSlateFontInfo FontLog   = FCoreStyle::GetDefaultFontStyle("Mono", 8);
 
 	ChildSlot
+	.HAlign(HAlign_Right)
+	.VAlign(VAlign_Top)
+	.Padding(FMargin(0.f, 8.f, 12.f, 0.f))
 	[
-		// Ancora no canto superior direito da tela.
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Right)
-		.VAlign(VAlign_Top)
-		.Padding(FMargin(0.f, 8.f, 12.f, 0.f))
+		SNew(SBox)
+		.WidthOverride(400.f)
 		[
-			SNew(SBox)
-			.WidthOverride(400.f)
+			SNew(SBorder)
+			.BorderImage(PanelBrush())
+			.Padding(FMargin(10.f, 8.f))
 			[
-				SNew(SBorder)
-				.BorderImage(GetDarkBrush())
-				.Padding(FMargin(10.f, 8.f))
-				[
-					SNew(SVerticalBox)
+				SNew(SVerticalBox)
 
-					// ── Título ────────────────────────────────────────────
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 0.f, 0.f, 6.f)
+				// ── Título ────────────────────────────────────────────────
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 6.f)
+				[
+					SNew(STextBlock)
+					.Font(FontTitle)
+					.ColorAndOpacity(ColTitle)
+					.Text(NSLOCTEXT("StrategosDebug", "OverlayTitle",
+						"EVENT DEBUG   [Strategos.Event.ToggleDebugUI]"))
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 8.f)
+				[
+					SNew(SBorder).BorderImage(RuleBrush()).Padding(FMargin(0.f, 1.f))
+				]
+
+				// ── Inputs ────────────────────────────────────────────────
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 2.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.FillWidth(0.28f)
+					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.TextStyle(&TitleStyle)
-						.Text(NSLOCTEXT("StrategosDebug","OverlayTitle","EVENT DEBUG  [Strategos.Event.ToggleDebugUI]"))
+						.Font(FontBody).ColorAndOpacity(ColText)
+						.Text(NSLOCTEXT("StrategosDebug", "EventIdLbl", "EventId:"))
 					]
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 0.f, 0.f, 8.f)
+					+ SHorizontalBox::Slot()
+					.FillWidth(0.72f)
 					[
-						SNew(SBorder)
-						.BorderImage(GetSeparatorBrush())
-						.Padding(FMargin(0.f, 1.f))
+						SAssignNew(EventIdBox, SEditableTextBox)
+						.Font(FontBody)
+						.HintText(NSLOCTEXT("StrategosDebug", "EventIdHint", "ex: ForeignInvestor"))
 					]
+				]
 
-					// ── Inputs ────────────────────────────────────────────
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 2.f)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 2.f, 0.f, 6.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.FillWidth(0.28f)
+					.VAlign(VAlign_Center)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.FillWidth(0.28f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.TextStyle(&BodyStyle)
-							.Text(NSLOCTEXT("StrategosDebug","EventIdLbl","EventId:"))
-						]
-						+ SHorizontalBox::Slot()
-						.FillWidth(0.72f)
-						[
-							SAssignNew(EventIdBox, SEditableTextBox)
-							.HintText(NSLOCTEXT("StrategosDebug","EventIdHint","ex: ForeignInvestor"))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						]
+						SNew(STextBlock)
+						.Font(FontBody).ColorAndOpacity(ColText)
+						.Text(NSLOCTEXT("StrategosDebug", "NationIdLbl", "NationId:"))
 					]
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 2.f, 0.f, 6.f)
+					+ SHorizontalBox::Slot()
+					.FillWidth(0.72f)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.FillWidth(0.28f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.TextStyle(&BodyStyle)
-							.Text(NSLOCTEXT("StrategosDebug","NationIdLbl","NationId:"))
-						]
-						+ SHorizontalBox::Slot()
-						.FillWidth(0.72f)
-						[
-							SAssignNew(NationIdBox, SEditableTextBox)
-							.HintText(NSLOCTEXT("StrategosDebug","NationIdHint","ex: Albion"))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						]
+						SAssignNew(NationIdBox, SEditableTextBox)
+						.Font(FontBody)
+						.HintText(NSLOCTEXT("StrategosDebug", "NationIdHint", "ex: Albion"))
 					]
+				]
 
-					// ── Botões de ação ─────────────────────────────────────
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 2.f, 0.f, 8.f)
+				// ── Ações ─────────────────────────────────────────────────
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 2.f, 0.f, 8.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0.f, 0.f, 4.f, 0.f)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(0.f, 0.f, 4.f, 0.f)
-						[
-							SNew(SButton)
-							.Text(NSLOCTEXT("StrategosDebug","BtnFire","Disparar"))
-							.OnClicked_Raw(this, &SEventDebugOverlay::OnFireClicked)
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(0.f, 0.f, 4.f, 0.f)
-						[
-							SNew(SButton)
-							.Text(NSLOCTEXT("StrategosDebug","BtnCreate","Criar Teste"))
-							.OnClicked_Raw(this, &SEventDebugOverlay::OnCreateTestClicked)
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						[
-							SNew(SButton)
-							.Text(NSLOCTEXT("StrategosDebug","BtnTestPersistence","Testar Persistencia"))
-							.OnClicked_Raw(this, &SEventDebugOverlay::OnTestPersistenceClicked)
-						]
+						SNew(SButton)
+						.Text(NSLOCTEXT("StrategosDebug", "BtnFire", "Disparar"))
+						.ToolTipText(NSLOCTEXT("StrategosDebug", "BtnFireTip",
+							"Dispara um evento ja registrado (registry ou fallback)."))
+						.OnClicked(this, &SEventDebugOverlay::OnFireClicked)
 					]
-
-					// ── Decisions pendentes ────────────────────────────────
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 0.f, 0.f, 4.f)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0.f, 0.f, 4.f, 0.f)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.FillWidth(1.f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.TextStyle(&BodyStyle)
-							.Text(NSLOCTEXT("StrategosDebug","PendingHeader","Decisions Pendentes:"))
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						[
-							SNew(SButton)
-							.Text(NSLOCTEXT("StrategosDebug","BtnRefresh","Atualizar"))
-							.OnClicked_Raw(this, &SEventDebugOverlay::OnRefreshClicked)
-						]
+						SNew(SButton)
+						.Text(NSLOCTEXT("StrategosDebug", "BtnCreate", "Criar Teste"))
+						.ToolTipText(NSLOCTEXT("StrategosDebug", "BtnCreateTip",
+							"Cria uma Decision efemera com esse Id e a dispara."))
+						.OnClicked(this, &SEventDebugOverlay::OnCreateTestClicked)
 					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					[
+						SNew(SButton)
+						.Text(NSLOCTEXT("StrategosDebug", "BtnPersist", "Testar Persistencia"))
+						.ToolTipText(NSLOCTEXT("StrategosDebug", "BtnPersistTip",
+							"Cria -> salva -> recarrega -> verifica se a decisao sobreviveu."))
+						.OnClicked(this, &SEventDebugOverlay::OnTestPersistenceClicked)
+					]
+				]
 
-					+ SVerticalBox::Slot()
-					.MaxHeight(130.f)
-					.Padding(0.f, 0.f, 0.f, 8.f)
+				// ── Fila de decisions ─────────────────────────────────────
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 4.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Font(FontBody).ColorAndOpacity(ColText)
+						.Text(NSLOCTEXT("StrategosDebug", "PendingHeader", "Decisions pendentes:"))
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					[
+						SNew(SButton)
+						.Text(NSLOCTEXT("StrategosDebug", "BtnRefresh", "Atualizar"))
+						.OnClicked(this, &SEventDebugOverlay::OnRefreshClicked)
+					]
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 8.f)
+				[
+					SNew(SBox)
+					.MaxDesiredHeight(130.f)
 					[
 						SNew(SScrollBox)
 						+ SScrollBox::Slot()
@@ -250,34 +247,37 @@ void SEventDebugOverlay::Construct(const FArguments& InArgs)
 							SAssignNew(DecisionsBox, SVerticalBox)
 						]
 					]
+				]
 
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 0.f, 0.f, 4.f)
-					[
-						SNew(SBorder)
-						.BorderImage(GetSeparatorBrush())
-						.Padding(FMargin(0.f, 1.f))
-					]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 4.f)
+				[
+					SNew(SBorder).BorderImage(RuleBrush()).Padding(FMargin(0.f, 1.f))
+				]
 
-					// ── Log ───────────────────────────────────────────────
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.f, 0.f, 0.f, 3.f)
-					[
-						SNew(STextBlock)
-						.TextStyle(&BodyStyle)
-						.Text(NSLOCTEXT("StrategosDebug","LogHeader","Log:"))
-					]
+				// ── Log ───────────────────────────────────────────────────
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.f, 0.f, 0.f, 3.f)
+				[
+					SNew(STextBlock)
+					.Font(FontBody).ColorAndOpacity(ColText)
+					.Text(NSLOCTEXT("StrategosDebug", "LogHeader", "Log:"))
+				]
 
-					+ SVerticalBox::Slot()
-					.MaxHeight(140.f)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SBox)
+					.MaxDesiredHeight(140.f)
 					[
 						SAssignNew(LogScroll, SScrollBox)
 						+ SScrollBox::Slot()
 						[
 							SAssignNew(LogBlock, STextBlock)
-							.TextStyle(&LogStyle)
+							.Font(FontLog)
+							.ColorAndOpacity(ColLog)
 							.AutoWrapText(true)
 							.Text(FText::GetEmpty())
 						]
@@ -290,20 +290,31 @@ void SEventDebugOverlay::Construct(const FArguments& InArgs)
 	RefreshDecisions();
 }
 
-FReply SEventDebugOverlay::OnFireClicked()
+bool SEventDebugOverlay::ReadIds(FName& OutEventId, FName& OutNationId)
 {
 	if (!DebugSys.IsValid())
 	{
-		AppendLog(TEXT("[ERR] DebugSys invalido."));
-		return FReply::Handled();
+		AppendLog(TEXT("[ERRO] DebugSubsystem invalido."));
+		return false;
 	}
-	const FName EvId(*EventIdBox->GetText().ToString());
-	const FName NaId(*NationIdBox->GetText().ToString());
-	if (EvId.IsNone() || NaId.IsNone())
+	const FString EvStr = EventIdBox.IsValid()  ? EventIdBox->GetText().ToString().TrimStartAndEnd()  : FString();
+	const FString NaStr = NationIdBox.IsValid() ? NationIdBox->GetText().ToString().TrimStartAndEnd() : FString();
+
+	if (EvStr.IsEmpty() || NaStr.IsEmpty())
 	{
 		AppendLog(TEXT("Preencha EventId e NationId."));
-		return FReply::Handled();
+		return false;
 	}
+	OutEventId  = FName(*EvStr);
+	OutNationId = FName(*NaStr);
+	return true;
+}
+
+FReply SEventDebugOverlay::OnFireClicked()
+{
+	FName EvId, NaId;
+	if (!ReadIds(EvId, NaId)) return FReply::Handled();
+
 	DebugSys->FireEventDebug(EvId, NaId);
 	AppendLog(FString::Printf(TEXT("Disparado: %s -> %s"), *EvId.ToString(), *NaId.ToString()));
 	RefreshDecisions();
@@ -312,42 +323,23 @@ FReply SEventDebugOverlay::OnFireClicked()
 
 FReply SEventDebugOverlay::OnCreateTestClicked()
 {
-	if (!DebugSys.IsValid())
-	{
-		AppendLog(TEXT("[ERR] DebugSys invalido."));
-		return FReply::Handled();
-	}
-	const FName EvId(*EventIdBox->GetText().ToString());
-	const FName NaId(*NationIdBox->GetText().ToString());
-	if (EvId.IsNone() || NaId.IsNone())
-	{
-		AppendLog(TEXT("Preencha EventId e NationId."));
-		return FReply::Handled();
-	}
+	FName EvId, NaId;
+	if (!ReadIds(EvId, NaId)) return FReply::Handled();
+
 	DebugSys->CreateAndFireTestDecision(EvId, NaId);
-	AppendLog(FString::Printf(TEXT("Criado e disparado: %s -> %s"), *EvId.ToString(), *NaId.ToString()));
+	AppendLog(FString::Printf(TEXT("Criado + disparado: %s -> %s"), *EvId.ToString(), *NaId.ToString()));
 	RefreshDecisions();
 	return FReply::Handled();
 }
 
 FReply SEventDebugOverlay::OnTestPersistenceClicked()
 {
-	if (!DebugSys.IsValid())
-	{
-		AppendLog(TEXT("[ERR] DebugSys invalido."));
-		return FReply::Handled();
-	}
-	const FName EvId(*EventIdBox->GetText().ToString());
-	const FName NaId(*NationIdBox->GetText().ToString());
-	if (EvId.IsNone() || NaId.IsNone())
-	{
-		AppendLog(TEXT("Preencha EventId e NationId."));
-		return FReply::Handled();
-	}
+	FName EvId, NaId;
+	if (!ReadIds(EvId, NaId)) return FReply::Handled();
+
 	const bool bPass = DebugSys->TestSaveLoadPersistence(EvId, NaId);
 	AppendLog(FString::Printf(TEXT("Persistencia %s: %s -> %s"),
-		bPass ? TEXT("PASS") : TEXT("FAIL"),
-		*EvId.ToString(), *NaId.ToString()));
+		bPass ? TEXT("PASS") : TEXT("FAIL"), *EvId.ToString(), *NaId.ToString()));
 	RefreshDecisions();
 	return FReply::Handled();
 }
@@ -364,62 +356,47 @@ void SEventDebugOverlay::RefreshDecisions()
 	if (!DecisionsBox.IsValid()) return;
 	DecisionsBox->ClearChildren();
 
-	const FTextBlockStyle ItemStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.9f, 0.9f, 0.7f)));
+	const FSlateFontInfo FontBody = FCoreStyle::GetDefaultFontStyle("Regular", 9);
 
-	const FTextBlockStyle DimStyle = FTextBlockStyle()
-		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-		.SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)));
+	auto AddLine = [&](const FText& Txt, const FSlateColor& Col)
+	{
+		DecisionsBox->AddSlot()
+		.AutoHeight()
+		.Padding(FMargin(0.f, 1.f))
+		[
+			SNew(STextBlock).Font(FontBody).ColorAndOpacity(Col).Text(Txt)
+		];
+	};
 
 	if (!World.IsValid())
 	{
-		DecisionsBox->AddSlot().AutoHeight()
-		[
-			SNew(STextBlock).TextStyle(&DimStyle)
-			.Text(NSLOCTEXT("StrategosDebug","NoWorld","[world invalido]"))
-		];
+		AddLine(NSLOCTEXT("StrategosDebug", "NoWorld", "[world invalido]"), ColDim);
 		return;
 	}
 
 	UEventSubsystem* Events = World->GetSubsystem<UEventSubsystem>();
 	if (!Events)
 	{
-		DecisionsBox->AddSlot().AutoHeight()
-		[
-			SNew(STextBlock).TextStyle(&DimStyle)
-			.Text(NSLOCTEXT("StrategosDebug","NoEventSys","[EventSubsystem indisponivel]"))
-		];
+		AddLine(NSLOCTEXT("StrategosDebug", "NoEventSys", "[EventSubsystem indisponivel]"), ColDim);
 		return;
 	}
 
 	const TMap<FName, TArray<FPendingDecision>>& Raw = Events->GetPendingDecisionsRaw();
-	if (Raw.Num() == 0)
-	{
-		DecisionsBox->AddSlot().AutoHeight()
-		[
-			SNew(STextBlock).TextStyle(&DimStyle)
-			.Text(NSLOCTEXT("StrategosDebug","NoPending","(nenhuma decisao pendente)"))
-		];
-		return;
-	}
 
+	int32 Total = 0;
 	for (const auto& Pair : Raw)
 	{
 		for (const FPendingDecision& P : Pair.Value)
 		{
-			const FString Line = FString::Printf(TEXT("• %s  ->  %s"),
-				*Pair.Key.ToString(), *P.Context.EventId.ToString());
-
-			DecisionsBox->AddSlot()
-			.AutoHeight()
-			.Padding(FMargin(0.f, 1.f))
-			[
-				SNew(STextBlock)
-				.TextStyle(&ItemStyle)
-				.Text(FText::FromString(Line))
-			];
+			AddLine(FText::FromString(FString::Printf(TEXT("- %s  ->  %s"),
+				*Pair.Key.ToString(), *P.Context.EventId.ToString())), ColItem);
+			++Total;
 		}
+	}
+
+	if (Total == 0)
+	{
+		AddLine(NSLOCTEXT("StrategosDebug", "NoPending", "(nenhuma decisao pendente)"), ColDim);
 	}
 }
 
@@ -434,19 +411,11 @@ void SEventDebugOverlay::AppendLog(const FString& Line)
 	{
 		LogBlock->SetText(FText::FromString(FString::Join(LogLines, TEXT("\n"))));
 	}
-	// Auto-scroll para o topo (linha mais recente).
+	// Linha mais recente fica no topo.
 	if (LogScroll.IsValid())
 	{
 		LogScroll->ScrollToStart();
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Variável de módulo — referência ao overlay atual (no máximo um por mundo).
-
-namespace
-{
-	TSharedPtr<SWidget> GDebugOverlayWidget;
 }
 
 // ---------------------------------------------------------------------------
@@ -473,17 +442,16 @@ void UEventDebugSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UEventDebugSubsystem::Deinitialize()
 {
 #if !UE_BUILD_SHIPPING
-	// Garante que o overlay é removido ao destruir o subsistema.
-	if (GDebugOverlayWidget.IsValid())
+	if (DebugOverlay.IsValid())
 	{
 		if (UWorld* W = GetWorld())
 		{
 			if (UGameViewportClient* VP = W->GetGameViewport())
 			{
-				VP->RemoveViewportWidgetContent(GDebugOverlayWidget.ToSharedRef());
+				VP->RemoveViewportWidgetContent(DebugOverlay.ToSharedRef());
 			}
 		}
-		GDebugOverlayWidget.Reset();
+		DebugOverlay.Reset();
 	}
 	UnregisterConsoleCommands();
 #endif
@@ -527,7 +495,7 @@ void UEventDebugSubsystem::RegisterConsoleCommands()
 
 	ConsoleObjects.Add(CM.RegisterConsoleCommand(
 		TEXT("Strategos.Event.ToggleDebugUI"),
-		TEXT("Mostra/esconde o painel de debug de eventos."),
+		TEXT("Mostra/esconde o painel visual de debug de eventos."),
 		FConsoleCommandWithArgsDelegate::CreateUObject(this, &UEventDebugSubsystem::Cmd_ToggleUI),
 		ECVF_Cheat
 	));
@@ -547,7 +515,7 @@ void UEventDebugSubsystem::UnregisterConsoleCommands()
 }
 
 // ---------------------------------------------------------------------------
-// ToggleDebugUI
+// Overlay toggle
 
 void UEventDebugSubsystem::ToggleDebugUI()
 {
@@ -555,24 +523,33 @@ void UEventDebugSubsystem::ToggleDebugUI()
 	if (!W) return;
 
 	UGameViewportClient* Viewport = W->GetGameViewport();
-	if (!Viewport) return;
-
-	if (GDebugOverlayWidget.IsValid())
+	if (!Viewport)
 	{
-		Viewport->RemoveViewportWidgetContent(GDebugOverlayWidget.ToSharedRef());
-		GDebugOverlayWidget.Reset();
-		UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Event overlay escondido."));
+		UE_LOG(LogStrategosCore, Warning, TEXT("[DEBUG] Sem GameViewport; overlay indisponivel."));
+		return;
 	}
-	else
-	{
-		TSharedRef<SEventDebugOverlay> Overlay = SNew(SEventDebugOverlay)
-			.DebugSys(this)
-			.World(W);
 
-		GDebugOverlayWidget = Overlay;
-		Viewport->AddViewportWidgetContent(Overlay, 100);
-		UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Event overlay exibido."));
+	if (DebugOverlay.IsValid())
+	{
+		Viewport->RemoveViewportWidgetContent(DebugOverlay.ToSharedRef());
+		DebugOverlay.Reset();
+		UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Overlay de eventos escondido."));
+		return;
 	}
+
+	TSharedRef<SEventDebugOverlay> Overlay = SNew(SEventDebugOverlay)
+		.DebugSys(this)
+		.World(W);
+
+	DebugOverlay = Overlay;
+	Viewport->AddViewportWidgetContent(Overlay, 100);
+	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Overlay de eventos exibido."));
+}
+
+void UEventDebugSubsystem::RefreshDebugUI()
+{
+	if (!DebugOverlay.IsValid()) return;
+	StaticCastSharedPtr<SEventDebugOverlay>(DebugOverlay)->RefreshDecisions();
 }
 
 // ---------------------------------------------------------------------------
@@ -596,14 +573,14 @@ namespace
 {
 	UEventAsset* MakeEphemeralDecision(UObject* Outer, FName CustomId)
 	{
-		UEventAsset* E    = NewObject<UEventAsset>(Outer);
-		E->Id             = CustomId;
-		E->Title          = FText::FromString(FString::Printf(TEXT("[DEBUG] %s"), *CustomId.ToString()));
-		E->Description    = NSLOCTEXT("StrategosDebug", "TestDesc",
-			"Evento efemero criado via debug subsystem para teste de persistencia.");
-		E->Type           = EEventType::Decision;
-		E->Category       = TEXT("political");
-		E->TriggerTag     = TEXT("Debug.Manual");
+		UEventAsset* E = NewObject<UEventAsset>(Outer);
+		E->Id          = CustomId;
+		E->Title       = FText::FromString(FString::Printf(TEXT("[DEBUG] %s"), *CustomId.ToString()));
+		E->Description = NSLOCTEXT("StrategosDebug", "TestDesc",
+			"Evento efemero criado pelo debug subsystem para teste de persistencia.");
+		E->Type        = EEventType::Decision;
+		E->Category    = TEXT("political");
+		E->TriggerTag  = TEXT("Debug.Manual");
 		E->MeanTimeToHappenMonths = 0;
 
 		FEventChoice ChoiceA;
@@ -621,8 +598,20 @@ namespace
 	{
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 8.f,
-				bGreen ? FColor::Green : FColor::Red, Msg);
+			GEngine->AddOnScreenDebugMessage(-1, 8.f, bGreen ? FColor::Green : FColor::Red, Msg);
+		}
+	}
+
+	/** Preenche FireDate a partir do TimeSubsystem, quando disponível. */
+	void StampFireDate(const UWorld* W, FEventContext& Ctx)
+	{
+		if (!W) return;
+		if (const UGameInstance* GI = W->GetGameInstance())
+		{
+			if (const UTimeSubsystem* Time = GI->GetSubsystem<UTimeSubsystem>())
+			{
+				Ctx.FireDate = Time->GetCurrentDate();
+			}
 		}
 	}
 }
@@ -635,24 +624,24 @@ void UEventDebugSubsystem::FireEventDebug(FName EventId, FName NationId)
 	UEventSubsystem* Events = ResolveEventSubsystem();
 	if (!Events) return;
 
-	const UWorld* W = GetWorld();
+	if (!Events->GetEventById(EventId))
+	{
+		UE_LOG(LogStrategosCore, Warning,
+			TEXT("[DEBUG] FireEvent: '%s' nao esta registrado. Use CreateTestDecision para criar um efemero."),
+			*EventId.ToString());
+		return;
+	}
+
 	FEventContext Ctx;
 	Ctx.EventId        = EventId;
 	Ctx.SourceNationId = NationId;
 	Ctx.TriggerTag     = TEXT("Debug");
-	if (W)
-	{
-		if (const UGameInstance* GI = W->GetGameInstance())
-		{
-			if (const UTimeSubsystem* Time = GI->GetSubsystem<UTimeSubsystem>())
-			{
-				Ctx.FireDate = Time->GetCurrentDate();
-			}
-		}
-	}
+	StampFireDate(GetWorld(), Ctx);
+
 	Events->FireEventById(EventId, Ctx);
 	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] FireEvent '%s' -> '%s'"),
 		*EventId.ToString(), *NationId.ToString());
+	RefreshDebugUI();
 }
 
 void UEventDebugSubsystem::CreateAndFireTestDecision(FName CustomEventId, FName NationId)
@@ -663,24 +652,16 @@ void UEventDebugSubsystem::CreateAndFireTestDecision(FName CustomEventId, FName 
 	UEventAsset* E = MakeEphemeralDecision(this, CustomEventId);
 	Events->RegisterEphemeralEvent(E);
 
-	const UWorld* W = GetWorld();
 	FEventContext Ctx;
 	Ctx.EventId        = CustomEventId;
 	Ctx.SourceNationId = NationId;
 	Ctx.TriggerTag     = TEXT("Debug.Manual");
-	if (W)
-	{
-		if (const UGameInstance* GI = W->GetGameInstance())
-		{
-			if (const UTimeSubsystem* Time = GI->GetSubsystem<UTimeSubsystem>())
-			{
-				Ctx.FireDate = Time->GetCurrentDate();
-			}
-		}
-	}
+	StampFireDate(GetWorld(), Ctx);
+
 	Events->FireEventById(CustomEventId, Ctx);
 	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] CreateAndFireTestDecision '%s' -> '%s'"),
 		*CustomEventId.ToString(), *NationId.ToString());
+	RefreshDebugUI();
 }
 
 FString UEventDebugSubsystem::DumpPendingDecisions() const
@@ -692,11 +673,6 @@ FString UEventDebugSubsystem::DumpPendingDecisions() const
 	}
 
 	const TMap<FName, TArray<FPendingDecision>>& Raw = Events->GetPendingDecisionsRaw();
-	if (Raw.Num() == 0)
-	{
-		UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Nenhuma decisao pendente."));
-		return TEXT("Nenhuma decisao pendente.");
-	}
 
 	FString Result;
 	int32 Total = 0;
@@ -711,6 +687,13 @@ FString UEventDebugSubsystem::DumpPendingDecisions() const
 			++Total;
 		}
 	}
+
+	if (Total == 0)
+	{
+		UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Nenhuma decisao pendente."));
+		return TEXT("Nenhuma decisao pendente.");
+	}
+
 	UE_LOG(LogStrategosCore, Log, TEXT("[DEBUG] Total: %d decisao(oes) pendente(s)."), Total);
 	return Result;
 }
@@ -721,59 +704,69 @@ bool UEventDebugSubsystem::TestSaveLoadPersistence(FName CustomEventId, FName Na
 	USaveSubsystem*  Save   = ResolveSaveSubsystem();
 	if (!Events || !Save)
 	{
-		UE_LOG(LogStrategosCore, Warning, TEXT("[DEBUG] TestSaveLoadPersistence: subsistemas indisponiveis."));
+		UE_LOG(LogStrategosCore, Warning,
+			TEXT("[DEBUG] TestSaveLoadPersistence: subsistemas indisponiveis."));
 		return false;
 	}
 
+	// 1. Cria e registra o asset efemero.
 	UEventAsset* E = MakeEphemeralDecision(this, CustomEventId);
 	Events->RegisterEphemeralEvent(E);
 
-	const UWorld* W = GetWorld();
+	// 2. Dispara: enfileira se a nacao for do jogador, auto-resolve caso contrario.
 	FEventContext Ctx;
 	Ctx.EventId        = CustomEventId;
 	Ctx.SourceNationId = NationId;
 	Ctx.TriggerTag     = TEXT("Debug.Manual");
-	if (W)
-	{
-		if (const UGameInstance* GI = W->GetGameInstance())
-		{
-			if (const UTimeSubsystem* Time = GI->GetSubsystem<UTimeSubsystem>())
-			{
-				Ctx.FireDate = Time->GetCurrentDate();
-			}
-		}
-	}
+	StampFireDate(GetWorld(), Ctx);
 	Events->FireEventById(CustomEventId, Ctx);
 
-	const bool bEnqueued = Events->HasPendingDecisions(NationId);
-	if (!bEnqueued)
+	// 3. Sem enfileirar nao ha o que testar — o ciclo passaria trivialmente.
+	if (!Events->HasPendingDecisions(NationId))
 	{
-		UE_LOG(LogStrategosCore, Warning,
-			TEXT("[DEBUG] TestSaveLoadPersistence AVISO: '%s' nao foi enfileirado para '%s'. "
-			     "Verifique se NationId corresponde ao jogador."),
+		const FString Msg = FString::Printf(
+			TEXT("[DEBUG] TestSaveLoadPersistence INCONCLUSIVO: '%s' nao foi enfileirado para '%s'. "
+			     "Confirme que essa nacao e a do jogador (nacoes de IA auto-resolvem)."),
 			*CustomEventId.ToString(), *NationId.ToString());
+		UE_LOG(LogStrategosCore, Warning, TEXT("%s"), *Msg);
+		ShowOnScreen(false, Msg);
+		return false;
 	}
 
+	// 4. Save -> Load no mesmo slot.
 	const FString SlotName = TEXT("_debug_test");
-	Save->SaveToSlot(SlotName);
-	Save->LoadFromSlot(SlotName);
+	if (!Save->SaveToSlot(SlotName))
+	{
+		UE_LOG(LogStrategosCore, Error, TEXT("[DEBUG] TestSaveLoadPersistence: SaveToSlot falhou."));
+		ShowOnScreen(false, TEXT("[DEBUG] TestSaveLoadPersistence FAIL: save falhou."));
+		return false;
+	}
+	if (!Save->LoadFromSlot(SlotName))
+	{
+		UE_LOG(LogStrategosCore, Error, TEXT("[DEBUG] TestSaveLoadPersistence: LoadFromSlot falhou."));
+		ShowOnScreen(false, TEXT("[DEBUG] TestSaveLoadPersistence FAIL: load falhou."));
+		return false;
+	}
 
-	// Re-registra pois LoadFromSlot nao restaura assets efemeros, apenas FEventContext.
+	// 5. O asset efemero nao e serializado (so o FEventContext); re-registra para
+	//    que a decisao restaurada volte a resolver para um UEventAsset valido.
 	Events->RegisterEphemeralEvent(E);
 
+	// 6. Verifica que a decisao sobreviveu ao ciclo.
 	const TArray<FPendingDecision> AfterLoad = Events->GetPendingDecisions(NationId);
 	const bool bFound = AfterLoad.ContainsByPredicate([&](const FPendingDecision& P)
 	{
 		return P.Context.EventId == CustomEventId;
 	});
 
-	const FString Verdict = bFound ? TEXT("PASS") : TEXT("FAIL");
 	const FString Msg = FString::Printf(
 		TEXT("[DEBUG] TestSaveLoadPersistence %s: '%s' para '%s'."),
-		*Verdict, *CustomEventId.ToString(), *NationId.ToString());
+		bFound ? TEXT("PASS") : TEXT("FAIL"),
+		*CustomEventId.ToString(), *NationId.ToString());
 
 	UE_LOG(LogStrategosCore, Log, TEXT("%s"), *Msg);
 	ShowOnScreen(bFound, Msg);
+	RefreshDebugUI();
 	return bFound;
 }
 
