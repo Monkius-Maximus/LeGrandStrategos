@@ -1,7 +1,7 @@
 # 82 — Terminology and Localization
 
-**Status:** REVIEWED — §1, §4 and batches 1–6 decided. Three rows marked *waits* stay open: law names, the Military law ladder size, the unit roster.
-**Date:** 2026-10-16
+**Status:** REVIEWED · [LATEST] — §1, §4 and batches 1–6 decided. Three rows marked *waits* stay open: law names, the Military law ladder size, the unit roster.
+**Date:** 2026-10-18
 **Related:** `00-start-here.md`, `42-politica-e-grupos-de-interesse.md`, `80-interface-e-ux.md` (§12), `81-guia-de-design-de-ui.md` (§6.8), `90-estado-do-projeto.md` (§1.5, §5), `83-ui-artifact-index.md`, `PROMPT-RECON-RESTART.md`, `PROMPT-APPLY-TERMINOLOGY.md`, `93-sprint-backlog-01.md`, `95-recon-restart.md`
 **Scope:** one name per concept across code, docs and game text; the termbase that holds those names; how translation plugs in later.
 
@@ -156,7 +156,7 @@ Godot imports translations from CSV. The first column holds the keys and its hea
 
 **4.29 Currency (C18).** **[DECIDED]** *Crown* / *Crowns*, shown as a number with the Crown icon. Gold, Ouro, "g" and "£" are retired.
 
-**4.30 Pop loyalty (C9).** **[OPEN]** Economy v1 moves a per-pop Loyalty each month, shown on screen as "Satisfação" or "Lealdade". Decide in the S1-06 recon whether it survives the port as its own value or folds into Needs Met. Until then it has no row.
+**4.30 Pop loyalty (C9).** **[DECIDED · LATEST]** Loyalty folds into **Needs Met** (`needs_met`): the share of the basket a pop received this month, a ratio instead of a drifting number. The tax effect returns with Politics v1 as part of Interest Group Approval. Loyalty gets no row; 'Loyalty', 'Lealdade' and 'Militancy' are retired for pops. *(Confirmed by Diogo, 2026-10-17; `94` §7.)*
 
 **4.31 Closed without a new name.** C4 Stratum: the port separates Stratum and Profession (§5 Population). C13 Reserve: no conflict in English. C14 Labor: only the law category remains. C15 Doctrine: the Unreal AI theme becomes the dev term "AI Strategy". C16 Stance: dev only. Diário: Journal (batch 5). Also retired from the Unreal design: Reform (→ Enactment), Faction (→ Interest Group), Country Card (→ panel Nation), War Room (→ panel Military).
 
@@ -229,7 +229,7 @@ Batch status:
 | `administration` | **Administration** | player | Monthly cost of running the state. | — | 95 | **[DECIDED batch 6]** Code `AdminCost`. |
 | `debt` | **Debt** | player | Money the state owes. | — | 95 | **[DECIDED batch 6]** |
 | `interest` | **Interest** | player | Monthly cost of Debt. | — | 95 | **[DECIDED batch 6]** |
-| `loan` | **Loan** / Loans | player | Money the state borrows; it adds to Debt. | — | 95 | **[DECIDED batch 6]** Name only. Economy v1 takes loans automatically when the Treasury runs out; whether the port keeps that is an S1-06 question. |
+| `loan` | **Loan** / Loans | player | Money the state borrows; it adds to Debt. | — | 95 | **[DECIDED batch 6]** Name. **[DECIDED · LATEST]** A Loan is the player's choice when the Treasury goes below zero; a setting takes Loans automatically. Its label waits for the finance doc (`35` §5). |
 | `bankruptcy` | **Bankruptcy** | player | A Treasury that cannot pay its Expenses. | — | 95 | **[DECIDED batch 6]** Name only; consequences undecided. |
 | `ownership_state` | **State-Owned** | player | A building the state owns; its profit goes to the Treasury. | — | 95 | **[DECIDED batch 6]** §4.28. Retire 'Government' as an owner. |
 | `ownership_private` | **Private** | player | A building Pops own; its profit goes to its owners. Private Investment builds them. | — | 95 | **[DECIDED batch 6]** §4.28. |
@@ -325,7 +325,7 @@ The 31 goods of the goods doc (`34`, §4.16). "First build" marks the 12 the fir
 | `needs_life` | **Life Needs** | player | First group of needs: food and basic goods. | — | 95 | **[DECIDED batch 6]** Names from the Unreal `20-economy.md`; contents follow `41`. |
 | `needs_everyday` | **Everyday Needs** | player | Second group of needs: clothes, furniture and common comforts. | — | 95 | **[DECIDED batch 6]** |
 | `needs_luxury` | **Luxury Needs** | player | Third group of needs: luxuries. | — | 95 | **[DECIDED batch 6]** |
-| `needs_met` | **Needs Met** | player | Share of a pop's needs currently satisfied. | satisfação ×4 | 80 81 | **[DECIDED §4.3]** Retire 'satisfaction' for pops. |
+| `needs_met` | **Needs Met** | player | Share of a pop's needs currently satisfied. | satisfação ×4 | 80 81 | **[DECIDED §4.3]** Retire 'satisfaction' for pops. **[DECIDED §4.30 · LATEST]** Replaces pop Loyalty; retire 'Loyalty', 'Militancy' for pops. |
 | `literacy` | **Literacy** | player | Share of a pop that can read; gates some professions. | alfabetização ×4 | 41 95 | **[DECIDED batch 6]** Name. Mechanic open in `41`. |
 | `promotion_demotion` | **Promotion / Demotion** | player | Pops moving up or down between professions and strata over time. | — | 41 | **[DECIDED]** Name. Was `mobility`; retire 'mobility' (reads as moving between provinces, which is Migration). Mechanic open in `41`. |
 | `unemployed` | **Unemployed** | player | Pops without a job. | sem emprego ×1 | — | **[DECIDED]** |
@@ -524,3 +524,4 @@ Unit types are always qualified ("Field Artillery", "Siege Artillery"). Bare "Ar
 - Batch 6, from the recon (`95`): the Steel ladder of the goods doc, with T5 Electric Arc inert until Electricity exists (§4.16); the market model, National Market plus one World Market (§4.17); a Goods section with the 31 goods, 12 marked for the first build (Cotton → Fiber, Pig Iron dropped, Artillery added); currency Crown / Crowns; the money rows of Economy v1; ownership State-Owned / Private; the indices Military Readiness, Industrial Capacity and Home Front; professions with their strata; the three needs groups; the seven Sphere names, with Economy and Military added to the shared names; Capital (province) and Political Capital Cap; Top Bar, Alert Strip, Provenance Tooltip; collisions C1–C18 resolved as §4.18–4.31, with pop Loyalty left [OPEN] for S1-06; goods doc renumbered `41-goods-and-chains` → `34-goods-and-chains`. *(Confirmed by Diogo, 2026-10-16.)*
 - 2026-10-16: §4.17 corrected after the Economy v1 recon (`94`): the World Market is new design, not ported code. *(Fact from the recon.)*
 - Marker *waits for recon* renamed *waits*, and termbase statuses `decided_waits` / `waits`, since the recon has reported. *(My proposal.)*
+- 2026-10-18: §4.30 decided (Loyalty folds into Needs Met); `needs_met` and `loan` rows updated; marker [LATEST]. *(Confirmed by Diogo, 2026-10-17.)*

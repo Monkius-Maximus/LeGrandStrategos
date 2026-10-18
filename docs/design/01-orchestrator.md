@@ -1,7 +1,7 @@
 # 01 — Orchestrator
 
-**Status:** LIVING — how any conversation in this Project works on LGS. Update it when the method changes.
-**Date:** 2026-10-16
+**Status:** LIVING · [LATEST] — how any conversation in this Project works on LGS. Update it when the method changes.
+**Date:** 2026-10-18
 **Related:** `00-start-here.md` (state), `82` (names), `93` (sprints), `90` §1.4 (principles), `HANDOFF-2026-10-16.md` (last full snapshot)
 
 The short version for the Project instructions field is at the end (§9).
@@ -21,7 +21,7 @@ The short version for the Project instructions field is at the end (§9).
 ## §2 — Which source wins
 
 1. Diogo's latest message.
-2. The numbered docs in the Project; between two docs, the newer **Date**. A conflict between docs is reported, never silently resolved.
+2. The numbered docs in the Project, which is the canonical home (`00` §4); between two docs, the newer **Date**, and within a doc, what is marked **[LATEST]**. A conflict between docs is reported, never silently resolved. Repository copies (`docs/design/`) are mirrors and never win.
 3. Reports (`94`, `95`, future recons): evidence about the code as of their date.
 4. The code itself, when a session can read it, over any doc that describes it.
 5. The chat archive (old conversations).
@@ -60,11 +60,11 @@ Old summaries and memory still describe LGS as an Unreal 5.5 project. It is a Go
 
 - **Language:** docs, data and game text in English, US spelling; the conversation with Diogo in Portuguese. A Portuguese doc is converted when it is next edited.
 - **Names:** only `82` names. A new player-visible concept needs a proposed `82` row before it appears anywhere. Never a retired variant (each row's Note lists them).
-- **Markers:** [DECIDED], LOCKED vX, [PROPOSED], [OPEN], [REF], ⚠ RECONCILIAR, *waits* (`00` §7).
+- **Markers:** [DECIDED], [LATEST], LOCKED vX, [PROPOSED], [OPEN], [REF], ⚠ RECONCILIAR, *waits* (`00` §7). When a decision or doc replaces an older one, mark the new one [LATEST] and the old one superseded.
 - **No fabricated identifiers.** An id not verified against code or data gets ⚠ RECONCILIAR.
 - **Every doc ends with "Appendix — Decisions taken".**
 - **Reports are snapshots.** Do not edit `94`, `95` or later recons; record their consequences in the owning doc.
-- **Doc numbers in use:** 00, 01, 21, 33, 34, 41, 42, 43, 50, 51, 52, 60, 61, 70, 80, 81, 82, 83, 90, 91, 92 (ADR-0001), 93, 94, 95, 96 (reserved). Check this list before numbering a new doc; add the new number here.
+- **Doc numbers in use:** 00, 01, 21, 22, 33, 34, 35, 41, 42, 43, 50, 51, 52, 60, 61, 70, 80, 81, 82, 83, 90, 91, 92 (ADR-0001), 93, 94, 95, 96 (reserved). Check this list before numbering a new doc; add the new number here.
 - **Style:** plain prose and tables. Mermaid only for linear flows, never for dense webs.
 
 ---
@@ -83,6 +83,7 @@ Old summaries and memory still describe LGS as an Unreal 5.5 project. It is a Go
 ## §7 — Before you finish
 
 - If the state changed: update `00` §2 (and §10 if a decision opened or closed).
+- After writing to the Project, mirror the changed docs to the repo (`docs/design/`), never the other way round.
 - If the plan changed: update `93`.
 - If a name appeared or changed: `82`.
 - Appendix lines added to every doc you changed.
@@ -124,3 +125,4 @@ Ao terminar: atualizar 00, 93 e 82 quando o estado, o plano ou um nome mudar, e 
 
 - This orchestrator and the instruction text. *(Requested by Diogo, 2026-10-16; content is my proposal.)*
 - Source-of-truth order (§2) and doc number registry (§5). *(My proposal.)*
+- 2026-10-18: [LATEST] marker added to the source order and markers; Project named as canonical home; doc numbers `22` and `35` registered; mirror step added to §7. *(Decisions confirmed by Diogo, 2026-10-17 and 2026-10-18.)*

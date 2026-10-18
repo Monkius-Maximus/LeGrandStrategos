@@ -1,7 +1,7 @@
 # 93 — Sprint Map and Sprint 01 Backlog
 
-**Status:** LIVING. Sprint 01 **stalled** (closed 2026-10-11 without its goal); Sprint 01-R **[PROPOSED]**.
-**Date:** 2026-10-16 (first version 2026-09-13, in Portuguese)
+**Status:** LIVING · [LATEST]. Sprint 01 **stalled** (closed 2026-10-11 without its goal); Sprint 01-R **[PROPOSED]**.
+**Date:** 2026-10-18 (first version 2026-09-13, in Portuguese)
 **Route:** **D — Fusion** (`91` §2): LGS with LGP's scope discipline.
 **Capacity:** about 5 h a week, so a 4-week sprint is about 20 h.
 **Related:** `00-start-here.md`, `80-interface-e-ux.md` §13, `82-terminology-and-localization.md`, `91-direcionamentos.md`, `92-adr-0001-fronteira-sim-godot.md`, `95-recon-restart.md`
@@ -133,7 +133,7 @@ le-grand-strategos/
 - FMG import (Sprint 02).
 - Any rendering, UI or Godot scene beyond the empty project that builds.
 - Politics, Interest Groups, laws, Political Capital (Sprint 05).
-- Card battle (Phase 2). Technology: in the first build Tiers advance by dated events — a named, temporary fallback.
+- Card battle (Phase 2). Technology: in the first build Tiers advance by dated events — a named, temporary fallback. **[LATEST]** Eras now start per nation by criteria (`21`, decided 2026-10-17), which needs a monthly criteria check instead of dated events; `22` §5.5 proposes which criteria the first build can use.
 - Religion, diplomacy, migration.
 - The other 19 goods, Electricity and the other production method ladders.
 - `PROMPT-APPLY-TERMINOLOGY.md` (Sprint 03, §2).
@@ -148,12 +148,16 @@ le-grand-strategos/
 | ~~Market model for the port~~ ✅ National Market + one World Market | — | `82` §4.17 |
 | ~~Stratum and Profession as separate axes~~ ✅ Separate | — | `82` §5 Population |
 | ~~The Steel ladder~~ ✅ Goods doc ladder, T5 waits for Electricity | — | `82` §4.16 |
-| Pop Loyalty: keep or fold into Needs Met | S1-09 | `82` §4.30, `94` §7 |
-| Automatic loan in the Treasury: keep or drop | S1-09 | `82` `loan`, `94` §8 |
-| Money model, scarce-goods sharing, method execution order, baskets and indices, building policies | S1-08 / S1-09 | `94` §10 questions 3–7 |
+| ~~Pop Loyalty~~ ✅ Folds into Needs Met [LATEST] | — | `82` §4.30 |
+| ~~Automatic loan~~ ✅ The player handles a negative Treasury; an optional setting takes Loans automatically; with it off, an alert without pause [LATEST] | — | `82` `loan`, `35` §1 |
+| Money model, scarce-goods sharing, method execution order | S1-08 / S1-09 | `94` §10 questions 3–5; analysis in `35` |
+| What a negative Treasury does until the player acts | S1-09 | `35` §5 question 4 |
+| Baskets and indices over the new goods | S1-09 | `94` §10 question 6; Diogo asked for alternatives |
+| Building policies, privatize, nationalize | Not in S1-09 | `94` §10 question 7; review of current docs against the old design first |
+| Era mechanics (rule, floor years, spread, catch-up) | Sprint 05–06 | `22` §6 |
 | Missing design docs added to the Project or repo (`33`, `34`, `41`, `43`, `50`, `51`, `52`, `60`, `70`) | Law names in `82`; Sprints 02–06 | `95` Q2 |
 | Military law ladder size (M1 = 0) | Sprint 05 | `95` Q7 |
-| LGP: absorb, pause or keep separate | Sprint 03 | `91` §6, `00` §10 |
+| ~~LGP~~ ✅ Kept separate [LATEST] | — | `00` §9 |
 | Confirm the `91` §0 discards (`StrategosUI`, Diplomacy branches) | Nothing now | `00` §10 |
 | Population migration | Not in the first build | `41` v1.2 |
 
@@ -179,3 +183,4 @@ le-grand-strategos/
 - 2026-10-16: R-3 done through `82` batch 6 — market model, Stratum and Profession separate, Steel ladder; the 12 goods changed (Cotton → Fiber, Pig Iron → Artillery). *(Confirmed by Diogo.)*
 - 2026-10-16: S1-06 done (`94`). *(Recon report.)*
 - 2026-10-16: S1-08 seeds Steel T1–T4 only, because a fail-fast loader cannot accept T5 without Electricity; S1-06 gains questions 7 (Loyalty) and 8 (automatic loan); S1-01 adds the `41-goods` → `34` rename; UI names follow `82` (Selection Dock, Top Bar, Alert Strip, Provenance Tooltip). *(My proposals, following batch 6.)*
+- 2026-10-18: §4 and §5 updated with the decisions of 2026-10-17 (Loyalty, negative Treasury, LGP, eras per nation); open port questions point to `35`. *(Decisions confirmed by Diogo, 2026-10-17.)*

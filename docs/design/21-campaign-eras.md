@@ -1,8 +1,8 @@
 # 21 — Campaign Eras
 
-**Status:** DRAFT — structure and names decided; what triggers an era is open
-**Date:** 2026-10-16
-**Related:** `82` (§4.14, era names), `61-doctrine-axes.md` (doctrine nodes per era), `80` (era transition screen), `91` (Route D)
+**Status:** DRAFT · [LATEST] — structure and names decided; eras start per nation by criteria; the mechanics are proposed in `22`
+**Date:** 2026-10-18
+**Related:** `22-era-progression-research.md` (mechanics), `82` (§4.14, era names), `61-doctrine-axes.md` (doctrine nodes per era), `80` (era transition screen), `91` (Route D)
 **Sources:** the June 2026 "Phase 2" design session (chat archive, not a doc until now) and `82` batch 5.
 **Numbering:** the Unreal repo has its own `21-progress.md` (technology and eras over 1820–1925); it is superseded (`00` §6, `95` Q3), so `21` here does not collide with a current doc.
 
@@ -43,12 +43,8 @@ Technology (`50`) does not use eras. It advances through spark, diffusion and ad
 
 ## §3 — Open decisions
 
-1. **[OPEN] What triggers an era.** Two options:
-   - **Calendar.** Every nation enters the era on its start date. Simple, and it matches the dated events of the first build.
-   - **Per nation.** A nation enters the era when it reaches a threshold, for example a Steel Tier. This expresses the asymmetry pillar, but it adds a rule and a screen.
-
-   **[PROPOSED]** Calendar in the first build. Per nation stays a possible phase 2 change, decided after playtests show whether the asymmetry needs it.
-2. **[OPEN] Is the era global or per nation?** This follows from decision 1: calendar means global.
+1. **[DECIDED · LATEST] What triggers an era: the nation's own criteria.** Each nation enters an era when it meets that era's criteria. Prosperity, events and the player's actions speed it up or leave it stopped in time, which opens alternative histories. The calendar proposal is superseded. *(Confirmed by Diogo, 2026-10-17.)* Mechanics, and how the genre handles eras, are in `22`.
+2. **[DECIDED · LATEST] The era belongs to each nation**, not to the world. It follows from decision 1. The years in §1 become the earliest possible entry dates, if `22` §6 question 2 confirms it.
 3. **[OPEN] What else happens at a transition** besides doctrine nodes and the Gazette: new unit classes, new laws or methods becoming available? Nothing else is decided.
 
 ---
@@ -67,3 +63,4 @@ Technology (`50`) does not use eras. It advances through spark, diffusion and ad
 - Names checked against the goods doc's methods; no clash. *(`82` batch 6, confirmed by Diogo, 2026-10-16.)*
 - The descriptions in the "What changes" column. *(My summary of the June session's era tables.)*
 - Calendar trigger for the first build. *(My proposal.)*
+- 2026-10-18: era trigger decided: per nation, by criteria; the calendar proposal superseded. *(Confirmed by Diogo, 2026-10-17.)*
