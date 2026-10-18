@@ -1,8 +1,8 @@
 # 40 — Sistema de Recursos e Produção
 
-**Status:** Planejado. Estende Economy v1.
-**Pré-requisito:** Sessão 1 (dados geográficos de província) — ver `docs/prompts/`.
-**SaveVersion alvo da Sessão 1:** 6.
+**Status:** Em execução. Estende Economy v1.
+**Sessão 1 (geografia de província): ✅ implementada** — `FProvinceGeography` (topografia, clima, vegetação, hidrografia), persistida na **SaveVersion 6**. Classificação via `StrategosWorldGen`.
+**Pendentes:** Sessões 2–8 (slots, elegibilidade, recurso principal, tech tier, integração, modificadores, UI) — ver `docs/prompts/_plano-sessoes-recursos.md`.
 
 ---
 

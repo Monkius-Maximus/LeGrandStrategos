@@ -117,10 +117,10 @@ Objetivo: escala, profundidade e polimento.
 
 ## O Que Resta Detalhar Após a Arquitetura
 
-Subsistemas que ainda merecem aprofundamento, mas são técnicos/UX (não regras de jogo novas):
+`USaveSubsystem` e `UMapSubsystem` já estão **implementados em v1** (sem doc dedicado). O que resta neles é evolução técnica/UX, não a base:
 
-- **`USaveSubsystem`** — agora com complexidade real: serializar Brains, Modifiers, History, Treaties, Sieges. Versionamento e migração
-- **`UMapSubsystem`** — modos de mapa (político, econômico, militar, religioso, cultural, ferroviário), picking, fog of war, animações de fronteira
+- **`USaveSubsystem`** (v1 funcional, SaveVersion 6) — falta: migração entre versões, serializar Brains/History/Treaties/Sieges quando esses sistemas existirem
+- **`UMapSubsystem`** (v1 funcional: índice espacial + picking) — falta: modos de mapa (político, econômico, militar, religioso, cultural, ferroviário), fog of war, animações de fronteira
 - **`UTimeSubsystem`** — refinamento: pausas automáticas em eventos críticos, calendário, eras visuais
 - **Pipeline de UI** — HUD estratégico, painéis de subsistemas, integração com Event Bus para alertas
 
@@ -135,19 +135,21 @@ E o que vem **depois** da arquitetura, quando começar a implementação:
 
 ## Resumo do Inventário de Subsistemas
 
-| Subsistema | Documentação | Status Arquitetural |
-|---|---|---|
-| `UGameFlowSubsystem` | [`01-game-flow.md`](01-game-flow.md) | Definido |
-| `UTimeSubsystem` | [`02-time.md`](02-time.md) | Definido |
-| `UEventBusSubsystem` | [`03-event-bus.md`](03-event-bus.md) | Definido |
-| `UBattleSubsystem` | [`10-battle.md`](10-battle.md) | Detalhado |
-| Sistema de Unidades | [`11-units.md`](11-units.md) | Detalhado |
-| `UEconomySubsystem` | [`20-economy.md`](20-economy.md) | Detalhado |
-| `UProgressSubsystem` + Vitória | [`21-progress.md`](21-progress.md) | Detalhado |
-| `UEventSubsystem` | [`30-events.md`](30-events.md) | Detalhado |
-| `UPoliticsSubsystem` | [`31-politics.md`](31-politics.md) | Detalhado |
-| `UDiplomacySubsystem` | [`32-diplomacy.md`](32-diplomacy.md) | Detalhado |
-| `UAIDirectorSubsystem` | [`40-ai-director.md`](40-ai-director.md) | Detalhado |
-| `UMilitarySubsystem` | [`41-military.md`](41-military.md) | Detalhado |
-| `USaveSubsystem` | — | Esboçado em [`00-overview.md`](00-overview.md) |
-| `UMapSubsystem` | — | Esboçado em [`00-overview.md`](00-overview.md) |
+Coluna "Estado de Implementação" reflete o código em `main`. Detalhe granular em [`98-estado-implementacao.md`](98-estado-implementacao.md).
+
+| Subsistema | Documentação | Status Arquitetural | Estado de Implementação |
+|---|---|---|---|
+| `UGameFlowSubsystem` | [`01-game-flow.md`](01-game-flow.md) | Definido | ✅ Implementado |
+| `UTimeSubsystem` | [`02-time.md`](02-time.md) | Definido | ✅ Implementado |
+| `UEventBusSubsystem` | [`03-event-bus.md`](03-event-bus.md) | Definido | ✅ Implementado |
+| `UBattleSubsystem` | [`10-battle.md`](10-battle.md) | Detalhado | ✅ Núcleo (sub-etapas 1–10); visualização BP + polish pendentes |
+| Sistema de Unidades | [`11-units.md`](11-units.md) | Detalhado | ⚠️ Parcial — `UUnitTypeAsset` + stats de Army; composição em 5 eixos não implementada |
+| `UEconomySubsystem` | [`20-economy.md`](20-economy.md) | Detalhado | ✅ Implementado v2 (tick de 9 fases, produção, construção, impostos, auto-invest) |
+| `UProgressSubsystem` + Vitória | [`21-progress.md`](21-progress.md) | Detalhado | ❌ Pendente (apenas `RequiredTechId` reservado nos assets) |
+| `UEventSubsystem` | [`30-events.md`](30-events.md) | Detalhado | ✅ Implementado v2 (MTTH, conditions/effects plugáveis, fila de decisões) |
+| `UPoliticsSubsystem` | [`31-politics.md`](31-politics.md) | Detalhado | ❌ Pendente |
+| `UDiplomacySubsystem` | [`32-diplomacy.md`](32-diplomacy.md) | Detalhado | ✅ v1 — matriz Status+Opinion; ações (DeclareWar/Alliance) e tratados pendentes |
+| `UAIDirectorSubsystem` | [`40-ai-director.md`](40-ai-director.md) | Detalhado | ❌ Pendente — hoje só `UAIPlaceholderSubsystem` (regras por arquétipo) |
+| `UMilitarySubsystem` | [`41-military.md`](41-military.md) | Detalhado | ✅ v1 — movimento por adjacência; sem suprimento/frentes/naval |
+| `USaveSubsystem` | — | Esboçado em [`00-overview.md`](00-overview.md) | ✅ v1 implementado (SaveVersion 6); sem migração |
+| `UMapSubsystem` | — | Esboçado em [`00-overview.md`](00-overview.md) | ✅ v1 implementado (índice espacial, picking); sem modos de mapa/fog |
